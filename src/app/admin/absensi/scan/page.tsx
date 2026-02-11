@@ -1,0 +1,452 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Camera, CheckCircle, Clock, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { Scanner } from '@yudiel/react-qr-scanner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { masterDataService } from '@/services/masterDataService';
+import { generateId, formatTime, formatDateIndo } from '@/lib/helpers';
+import type { Jadwal, Tahap, Materi, Kelompok, Siswa, Absensi } from '@/types/firestore';
+
+interface ActiveJadwal extends Jadwal {
+  tahap_nama: string;
+  materi_nama: string;
+  kelompok_nama: string;
+}
+
+interface AbsensiRecord extends Absensi {
+  siswa_nama: string;
+  siswa_no_induk: string;
+}
+
+export default function ScanAbsensi() {
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [activeJadwal, setActiveJadwal] = useState<ActiveJadwal | null>(null);
+  const [siswas, setSiswas] = useState<Siswa[]>([]);
+  const [absensis, setAbsensis] = useState<AbsensiRecord[]>([]);
+  const [totalSiswa, setTotalSiswa] = useState(0);
+
+  // Load data
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load all data
+      const [jadwals, tahaps, materis, kelompoks, allSiswas] = await Promise.all([
+        masterDataService.getAllJadwal(),
+        masterDataService.getAllTahap(),
+        masterDataService.getAllMateri(),
+        masterDataService.getAllKelompok(),
+        masterDataService.getAllSiswa(),
+      ]);
+
+      // Find active jadwal
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const tolerance = 30; // 30 minutes before start
+
+      const active = jadwals.find((j) => {
+        if (j.tanggal !== today) return false;
+        
+        const [startH, startM] = j.jam_mulai.split(':').map(Number);
+        const [endH, endM] = j.jam_selesai.split(':').map(Number);
+        const startTime = startH * 60 + startM;
+        const endTime = endH * 60 + endM;
+        
+        // Handle midnight crossing
+        if (endTime < startTime) {
+          return (currentMinutes >= (startTime - tolerance)) || (currentMinutes <= endTime);
+        } else {
+          return currentMinutes >= (startTime - tolerance) && currentMinutes <= endTime;
+        }
+      });
+
+      if (!active) {
+        toast({
+          title: "Tidak ada jadwal aktif",
+          description: "Tidak ada jadwal yang sedang berlangsung saat ini",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Get jadwal details
+      const tahap = tahaps.find(t => t.id === active.tahap_id);
+      const materi = materis.find(m => m.id === active.materi_id);
+      const kelompok = kelompoks.find(k => k.id === active.kelompok_id);
+
+      const jadwalWithDetails: ActiveJadwal = {
+        ...active,
+        tahap_nama: tahap?.nama_tahap || '-',
+        materi_nama: materi?.nama_materi || '-',
+        kelompok_nama: kelompok?.nama_kelompok || '-',
+      };
+
+      setActiveJadwal(jadwalWithDetails);
+
+      // Filter siswa by kelompok
+      const siswaInKelompok = allSiswas.filter(s => s.kelompok_id === active.kelompok_id);
+      setSiswas(siswaInKelompok);
+      setTotalSiswa(siswaInKelompok.length);
+
+      // Load existing absensi
+      await loadAbsensi(active.id, siswaInKelompok);
+
+      setLoading(false);
+      setScanning(true); // Auto-start scanner
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast({
+        title: "Gagal memuat data",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      });
+      setLoading(false);
+    }
+  };
+
+  const loadAbsensi = async (jadwalId: string, siswaList: Siswa[]) => {
+    try {
+      const allAbsensi = await masterDataService.getAllAbsensi();
+      const jadwalAbsensi = allAbsensi
+        .filter(a => a.jadwal_id === jadwalId)
+        .map(a => {
+          const siswa = siswaList.find(s => s.id === a.siswa_id);
+          return {
+            ...a,
+            siswa_nama: siswa?.nama_lengkap || '-',
+            siswa_no_induk: siswa?.no_induk || '-',
+          };
+        })
+        .sort((a, b) => {
+          // Sort by waktu_scan descending (newest first)
+          if (!a.waktu_scan || !b.waktu_scan) return 0;
+          return new Date(b.waktu_scan).getTime() - new Date(a.waktu_scan).getTime();
+        });
+
+      setAbsensis(jadwalAbsensi);
+    } catch (error) {
+      console.error('Error loading absensi:', error);
+    }
+  };
+
+  const handleScan = async (result: string) => {
+    if (!activeJadwal || !scanning) return;
+
+    try {
+      // Parse QR data
+      const data = JSON.parse(result);
+      
+      if (data.type !== 'student_absensi') {
+        toast({
+          title: "QR Code tidak valid",
+          description: "QR Code bukan untuk absensi siswa",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const no_induk = data.no_induk;
+
+      // Find siswa
+      const siswa = siswas.find(s => s.no_induk === no_induk);
+      if (!siswa) {
+        toast({
+          title: "Siswa tidak ditemukan",
+          description: `No induk ${no_induk} tidak terdaftar di kelompok ini`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check duplicate
+      const duplicate = absensis.find(a => a.siswa_id === siswa.id);
+      if (duplicate) {
+        toast({
+          title: "Sudah absen",
+          description: `${siswa.nama_lengkap} sudah tercatat hadir`,
+          variant: "default",
+        });
+        return;
+      }
+
+      // Pause scanning while saving
+      setScanning(false);
+
+      // Create absensi
+      const newAbsensi: Omit<Absensi, 'id'> = {
+        jadwal_id: activeJadwal.id,
+        siswa_id: siswa.id,
+        tanggal: activeJadwal.tanggal,
+        status: 'hadir',
+        metode: 'qrcode',
+        waktu_scan: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+
+      await masterDataService.createAbsensi(newAbsensi);
+
+      // Success feedback
+      toast({
+        title: "✅ Berhasil",
+        description: `${siswa.nama_lengkap} - HADIR`,
+      });
+
+      // Reload absensi
+      await loadAbsensi(activeJadwal.id, siswas);
+
+      // Resume scanning after short delay
+      setTimeout(() => {
+        setScanning(true);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error handling scan:', error);
+      toast({
+        title: "Gagal memproses scan",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      });
+      
+      // Resume scanning
+      setTimeout(() => {
+        setScanning(true);
+      }, 1000);
+    }
+  };
+
+  const handleInputNilai = () => {
+    if (!activeJadwal) return;
+    
+    if (absensis.length === 0) {
+      toast({
+        title: "Belum ada siswa hadir",
+        description: "Scan minimal 1 siswa sebelum input nilai",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Navigate to penilaian/harian with jadwal info
+    router.push(`/admin/penilaian/harian?jadwal_id=${activeJadwal.id}&from=scan`);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!activeJadwal) {
+    return (
+      <div className="pb-20">
+        <div className="app-topbar">
+          <button onClick={() => router.back()} className="p-1">
+            <ArrowLeft size={22} />
+          </button>
+          <h1>Scan Absensi</h1>
+        </div>
+
+        <div className="app-content p-4">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Tidak ada jadwal aktif saat ini</strong>
+              <br />
+              <span className="text-sm">
+                Scan absensi hanya dapat dilakukan saat ada jadwal yang sedang berlangsung.
+                <br /><br />
+                <strong>Debug Info:</strong><br />
+                • Waktu sekarang: {new Date().toLocaleTimeString('id-ID')}<br />
+                • Tanggal: {new Date().toLocaleDateString('id-ID')}<br />
+                <br />
+                Cek browser console (F12) untuk detail deteksi jadwal.
+              </span>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-20">
+      <div className="app-topbar">
+        <button onClick={() => router.back()} className="p-1">
+          <ArrowLeft size={22} />
+        </button>
+        <h1>Scan Absensi</h1>
+        <div className="ml-auto flex gap-2">
+          <Button
+            size="sm"
+            onClick={handleInputNilai}
+            disabled={absensis.length === 0}
+          >
+            Input Nilai ({absensis.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={scanning ? "destructive" : "default"}
+            onClick={() => setScanning(!scanning)}
+          >
+            <Camera className="h-4 w-4 mr-1" />
+            {scanning ? "Stop" : "Scan"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="app-content p-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left: Scanner */}
+          <div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                Scanner QR Code
+              </CardTitle>
+              <CardDescription>
+                Arahkan kamera ke QR code pada kartu siswa
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Jadwal Info */}
+              <div className="mb-4 p-4 bg-muted rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold">Jadwal Aktif:</span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div><span className="text-muted-foreground">Tahap:</span> {activeJadwal.tahap_nama}</div>
+                  <div><span className="text-muted-foreground">Materi:</span> {activeJadwal.materi_nama}</div>
+                  <div><span className="text-muted-foreground">Kelompok:</span> {activeJadwal.kelompok_nama}</div>
+                  <div><span className="text-muted-foreground">Waktu:</span> {activeJadwal.jam_mulai} - {activeJadwal.jam_selesai}</div>
+                  <div><span className="text-muted-foreground">Tanggal:</span> {formatDateIndo(activeJadwal.tanggal)}</div>
+                </div>
+              </div>
+
+              {/* Camera */}
+              <div className="relative aspect-square bg-black rounded-lg overflow-hidden">
+                {scanning ? (
+                  <Scanner
+                    onScan={(result) => {
+                      if (result && result.length > 0) {
+                        handleScan(result[0].rawValue);
+                      }
+                    }}
+                    onError={(error) => {
+                      console.error('Scanner error:', error);
+                    }}
+                    constraints={{
+                      facingMode: 'environment',
+                    }}
+                    styles={{
+                      container: {
+                        width: '100%',
+                        height: '100%',
+                      },
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-white">
+                    <div className="text-center">
+                      <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm opacity-75">Scanner dihentikan</p>
+                      <p className="text-xs opacity-50 mt-1">Klik "Mulai Scan" untuk melanjutkan</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Stats */}
+              <div className="mt-4 flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Siswa Hadir</span>
+                </div>
+                <Badge variant="secondary" className="text-lg">
+                  {absensis.length} / {totalSiswa}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right: Absensi List */}
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle className="h-5 w-5" />
+                Daftar Kehadiran
+              </CardTitle>
+              <CardDescription>
+                Real-time list siswa yang sudah absen
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {absensis.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p>Belum ada siswa yang absen</p>
+                  <p className="text-sm mt-1">Mulai scan QR code untuk mencatat kehadiran</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  {absensis.map((absen, index) => (
+                    <div
+                      key={absen.id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold text-sm">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-medium">{absen.siswa_nama}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {absen.siswa_no_induk}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="secondary" className="mb-1">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          {absen.metode === 'qrcode' ? 'QR' : 'Manual'}
+                        </Badge>
+                        <div className="text-xs text-muted-foreground">
+                          {absen.waktu_scan ? formatTime(new Date(absen.waktu_scan)) : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}

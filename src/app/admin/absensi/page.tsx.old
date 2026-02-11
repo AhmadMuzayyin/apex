@@ -1,0 +1,435 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Calendar, Users, Check, X, AlertCircle, Loader2, QrCode } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { masterDataService } from '@/services/masterDataService';
+import type { Jadwal, Tahap, Materi, Kelompok, Siswa, Absensi as AbsensiType } from '@/types/firestore';
+import { Badge } from '@/components/ui/badge';
+
+const HARI_INDO = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+export default function Absensi() {
+  const router = useRouter();
+  const { toast } = useToast();
+  
+  const [tanggalFilter, setTanggalFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [jadwals, setJadwals] = useState<Jadwal[]>([]);
+  const [tahaps, setTahaps] = useState<Tahap[]>([]);
+  const [materis, setMateris] = useState<Materi[]>([]);
+  const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
+  const [siswas, setSiswas] = useState<Siswa[]>([]);
+  const [absensis, setAbsensis] = useState<AbsensiType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  
+  const [selectedJadwal, setSelectedJadwal] = useState<Jadwal | null>(null);
+  const [openAbsenDialog, setOpenAbsenDialog] = useState(false);
+  const [absensiData, setAbsensiData] = useState<{
+    [siswaId: string]: 'hadir' | 'izin' | 'sakit' | 'alpha';
+  }>({});
+
+  const loadAllData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [tahapData, materiData, kelompokData, siswaData] = await Promise.all([
+        masterDataService.getAllTahap(),
+        masterDataService.getAllMateri(),
+        masterDataService.getAllKelompok(),
+        masterDataService.getAllSiswa(),
+      ]);
+      setTahaps(tahapData);
+      setMateris(materiData);
+      setKelompoks(kelompokData);
+      setSiswas(siswaData);
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Gagal memuat data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  const loadJadwalAndAbsensi = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [jadwalData, absensiData] = await Promise.all([
+        masterDataService.getJadwalByTanggal(tanggalFilter),
+        masterDataService.getAbsensiByTanggal(tanggalFilter),
+      ]);
+      
+      setJadwals(jadwalData);
+      setAbsensis(absensiData);
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Gagal memuat jadwal',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [tanggalFilter, toast]);
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
+
+  useEffect(() => {
+    if (tanggalFilter) {
+      loadJadwalAndAbsensi();
+    }
+  }, [tanggalFilter, loadJadwalAndAbsensi]);
+
+  const getTahapName = (id: string) => tahaps.find(t => t.id === id)?.nama_tahap || '?';
+  const getMateriName = (id: string) => materis.find(m => m.id === id)?.nama_materi || '?';
+  const getKelompokName = (id: string) => kelompoks.find(k => k.id === id)?.nama_kelompok || '?';
+  
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const dayName = HARI_INDO[date.getDay()];
+    const dateFormatted = date.toLocaleDateString('id-ID', { 
+      day: '2-digit', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+    return `${dayName}, ${dateFormatted}`;
+  };
+
+  const getSiswasByKelompok = (kelompokId: string) => {
+    return siswas.filter(s => s.kelompok_id === kelompokId);
+  };
+
+  const getAbsensiForJadwal = (jadwalId: string) => {
+    return absensis.filter(a => a.jadwal_id === jadwalId);
+  };
+
+  const getAbsensiStatus = (jadwalId: string, siswaId: string) => {
+    const absen = absensis.find(a => a.jadwal_id === jadwalId && a.siswa_id === siswaId);
+    return absen?.status;
+  };
+
+  const handleInputAbsensi = (jadwal: Jadwal) => {
+    setSelectedJadwal(jadwal);
+    
+    // Prepare initial absensi data
+    const siswaList = getSiswasByKelompok(jadwal.kelompok_id);
+    const initialData: { [key: string]: 'hadir' | 'izin' | 'sakit' | 'alpha' } = {};
+    
+    siswaList.forEach(siswa => {
+      const existingStatus = getAbsensiStatus(jadwal.id, siswa.id);
+      initialData[siswa.id] = existingStatus || 'alpha';
+    });
+    
+    setAbsensiData(initialData);
+    setOpenAbsenDialog(true);
+  };
+
+  const handleSubmitAbsensi = async () => {
+    if (!selectedJadwal) return;
+
+    try {
+      setSubmitting(true);
+      
+      // Delete existing absensi for this jadwal
+      const existingAbsensi = getAbsensiForJadwal(selectedJadwal.id);
+      await Promise.all(
+        existingAbsensi.map(a => masterDataService.deleteAbsensi(a.id))
+      );
+
+      // Create new absensi records
+      const promises = Object.entries(absensiData).map(([siswaId, status]) => {
+        return masterDataService.createAbsensi({
+          jadwal_id: selectedJadwal.id,
+          siswa_id: siswaId,
+          tanggal: tanggalFilter,
+          status,
+          metode: 'manual',
+          created_at: new Date().toISOString(),
+        });
+      });
+
+      await Promise.all(promises);
+
+      toast({
+        title: 'Berhasil',
+        description: 'Absensi berhasil disimpan',
+      });
+
+      setOpenAbsenDialog(false);
+      loadJadwalAndAbsensi();
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Gagal menyimpan absensi',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getAbsensiStats = (jadwalId: string) => {
+    const absensiList = getAbsensiForJadwal(jadwalId);
+    const stats = {
+      hadir: absensiList.filter(a => a.status === 'hadir').length,
+      izin: absensiList.filter(a => a.status === 'izin').length,
+      sakit: absensiList.filter(a => a.status === 'sakit').length,
+      alpha: absensiList.filter(a => a.status === 'alpha').length,
+      total: absensiList.length,
+    };
+    return stats;
+  };
+
+  if (loading && !tanggalFilter) {
+    return (
+      <div>
+        <div className="app-topbar">
+          <button onClick={() => router.push('/admin')} className="p-1">
+            <ArrowLeft size={22} />
+          </button>
+          <h1>Absensi</h1>
+        </div>
+        <div className="app-content flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-20">
+      <div className="app-topbar">
+        <button onClick={() => router.push('/admin')} className="p-1">
+          <ArrowLeft size={22} />
+        </button>
+        <h1>Absensi</h1>
+        <Button
+          size="sm"
+          variant="default"
+          className="ml-auto"
+          onClick={() => router.push('/admin/absensi/scan')}
+        >
+          <QrCode className="h-4 w-4 mr-2" />
+          Scan QR
+        </Button>
+      </div>
+
+      {/* Filter Tanggal */}
+      <div className="app-content pt-4 px-4 pb-2">
+        <div className="space-y-2">
+          <Label htmlFor="tanggal">Pilih Tanggal</Label>
+          <Input
+            id="tanggal"
+            type="date"
+            className="rounded-xl"
+            value={tanggalFilter}
+            onChange={(e) => setTanggalFilter(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            {formatDate(tanggalFilter)}
+          </p>
+        </div>
+      </div>
+
+      {/* List Jadwal */}
+      <div className="app-content p-4 space-y-3">
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : jadwals.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p>Tidak ada jadwal untuk tanggal ini</p>
+          </div>
+        ) : (
+          jadwals.map((jadwal, i) => {
+            const stats = getAbsensiStats(jadwal.id);
+            const hasAbsensi = stats.total > 0;
+            
+            return (
+              <div
+                key={jadwal.id}
+                className="app-card animate-fade-in"
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
+                <div className="space-y-3">
+                  {/* Jadwal Info */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-semibold text-foreground">
+                          {getMateriName(jadwal.materi_id)}
+                        </h3>
+                        {hasAbsensi && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Check className="h-3 w-3 mr-1" />
+                            Sudah Absen
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {getTahapName(jadwal.tahap_id)} • {getKelompokName(jadwal.kelompok_id)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {jadwal.jam_mulai} - {jadwal.jam_selesai}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Absensi Stats */}
+                  {hasAbsensi && (
+                    <div className="grid grid-cols-4 gap-2 pt-3 border-t">
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-green-600">{stats.hadir}</div>
+                        <div className="text-xs text-muted-foreground">Hadir</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-blue-600">{stats.izin}</div>
+                        <div className="text-xs text-muted-foreground">Izin</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-yellow-600">{stats.sakit}</div>
+                        <div className="text-xs text-muted-foreground">Sakit</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-red-600">{stats.alpha}</div>
+                        <div className="text-xs text-muted-foreground">Alpha</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Button */}
+                  <Button
+                    onClick={() => handleInputAbsensi(jadwal)}
+                    className="w-full rounded-xl"
+                    variant={hasAbsensi ? 'outline' : 'default'}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    {hasAbsensi ? 'Edit Absensi' : 'Input Absensi'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Dialog Input Absensi */}
+      <Dialog open={openAbsenDialog} onOpenChange={setOpenAbsenDialog}>
+        <DialogContent className="max-w-[90vw] rounded-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Input Absensi</DialogTitle>
+            <DialogDescription>
+              {selectedJadwal && (
+                <>
+                  {getMateriName(selectedJadwal.materi_id)} • {getKelompokName(selectedJadwal.kelompok_id)}
+                  <br />
+                  {formatDate(tanggalFilter)} • {selectedJadwal.jam_mulai} - {selectedJadwal.jam_selesai}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {selectedJadwal && getSiswasByKelompok(selectedJadwal.kelompok_id).map((siswa) => (
+              <div key={siswa.id} className="border rounded-xl p-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-medium">{siswa.nama_lengkap}</p>
+                    <p className="text-sm text-muted-foreground">{siswa.no_induk}</p>
+                  </div>
+                </div>
+                <Select
+                  value={absensiData[siswa.id] || 'alpha'}
+                  onValueChange={(value: 'hadir' | 'izin' | 'sakit' | 'alpha') =>
+                    setAbsensiData({ ...absensiData, [siswa.id]: value })
+                  }
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hadir">
+                      <span className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-green-600" />
+                        Hadir
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="izin">
+                      <span className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-blue-600" />
+                        Izin
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="sakit">
+                      <span className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        Sakit
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="alpha">
+                      <span className="flex items-center gap-2">
+                        <X className="h-4 w-4 text-red-600" />
+                        Alpha
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpenAbsenDialog(false)}
+              disabled={submitting}
+              className="rounded-xl"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleSubmitAbsensi}
+              disabled={submitting}
+              className="rounded-xl"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                'Simpan'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

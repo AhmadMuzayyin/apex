@@ -1,0 +1,380 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Save, BookOpen, Users, Award, Loader2 } from 'lucide-react';
+import { masterDataService } from '@/services/masterDataService';
+import type { Tahap, Materi, Kelompok, Siswa, NilaiUlangan } from '@/types/firestore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+
+interface NilaiInput {
+  siswa_id: string;
+  nilai: number;
+  keterangan: string;
+}
+
+export default function NilaiUlangan() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [tahaps, setTahaps] = useState<Tahap[]>([]);
+  const [materis, setMateris] = useState<Materi[]>([]);
+  const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
+  const [siswas, setSiswas] = useState<Siswa[]>([]);
+  const [existingNilai, setExistingNilai] = useState<NilaiUlangan[]>([]);
+
+  const [filterTahapId, setFilterTahapId] = useState('');
+  const [filterMateriId, setFilterMateriId] = useState('');
+  const [filterKelompokId, setFilterKelompokId] = useState('');
+  const [nilaiInputs, setNilaiInputs] = useState<Record<string, NilaiInput>>({});
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  const loadInitialData = async () => {
+    try {
+      const [tahapData, materiData, kelompokData, siswaData] = await Promise.all([
+        masterDataService.getAllTahap(),
+        masterDataService.getAllMateri(),
+        masterDataService.getAllKelompok(),
+        masterDataService.getAllSiswa()
+      ]);
+      setTahaps(tahapData);
+      setMateris(materiData);
+      setKelompoks(kelompokData);
+      setSiswas(siswaData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Gagal memuat data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedTahap = useMemo(() => 
+    tahaps.find(t => t.id === filterTahapId),
+    [tahaps, filterTahapId]
+  );
+
+  const selectedMateri = useMemo(() =>
+    materis.find(m => m.id === filterMateriId),
+    [materis, filterMateriId]
+  );
+
+  const selectedKelompok = useMemo(() =>
+    kelompoks.find(k => k.id === filterKelompokId),
+    [kelompoks, filterKelompokId]
+  );
+
+  const filteredSiswas = useMemo(() => {
+    if (!filterKelompokId) return [];
+    return siswas.filter(s => s.kelompok_id === filterKelompokId)
+      .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+  }, [siswas, filterKelompokId]);
+
+  const handleShowForm = async () => {
+    if (!filterTahapId || !filterMateriId || !filterKelompokId) {
+      toast.error('Pilih tahap, materi, dan kelompok terlebih dahulu');
+      return;
+    }
+
+    try {
+      const nilaiData = await masterDataService.getNilaiUlanganByTahapMateriKelompok(
+        filterTahapId,
+        filterMateriId,
+        filterKelompokId
+      );
+      setExistingNilai(nilaiData);
+
+      const inputs: Record<string, NilaiInput> = {};
+      for (const siswa of filteredSiswas) {
+        const existing = nilaiData.find(n => n.siswa_id === siswa.id);
+        inputs[siswa.id] = {
+          siswa_id: siswa.id,
+          nilai: existing?.nilai || 0,
+          keterangan: existing?.keterangan || ''
+        };
+      }
+      setNilaiInputs(inputs);
+      setShowForm(true);
+    } catch (error) {
+      console.error('Error loading nilai:', error);
+      toast.error('Gagal memuat nilai');
+    }
+  };
+
+  const handleNilaiChange = (siswaId: string, field: 'nilai' | 'keterangan', value: string | number) => {
+    setNilaiInputs(prev => ({
+      ...prev,
+      [siswaId]: {
+        ...prev[siswaId],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!filterTahapId || !filterMateriId || !filterKelompokId) return;
+
+    const invalidNilai = Object.values(nilaiInputs).find(n => n.nilai < 0 || n.nilai > 100);
+    if (invalidNilai) {
+      toast.error('Nilai harus antara 0-100');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const today = new Date().toISOString().split('T')[0];
+
+      for (const input of Object.values(nilaiInputs)) {
+        const existing = existingNilai.find(n => n.siswa_id === input.siswa_id);
+
+        const nilaiData = {
+          siswa_id: input.siswa_id,
+          tahap_id: filterTahapId,
+          materi_id: filterMateriId,
+          kelompok_id: filterKelompokId,
+          nilai: input.nilai,
+          keterangan: input.keterangan,
+          tanggal_input: today,
+          created_at: existing?.created_at || now
+        };
+
+        if (existing) {
+          await masterDataService.updateNilaiUlangan(existing.id, nilaiData);
+        } else {
+          await masterDataService.createNilaiUlangan(nilaiData);
+        }
+      }
+
+      toast({
+        title: 'Berhasil',
+        description: 'Nilai ulangan (UAM) berhasil disimpan',
+      });
+      await handleShowForm();
+    } catch (error) {
+      console.error('Error saving:', error);
+      toast({
+        title: 'Error',
+        description: 'Gagal menyimpan nilai',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = () => {
+    setShowForm(false);
+    setNilaiInputs({});
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-container">
+      <div className="app-header">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/admin/penilaian')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex-1">
+          <h1 className="app-title">Input Nilai Ulangan (UAM)</h1>
+          <p className="app-subtitle">Ujian akhir materi per tahap</p>
+        </div>
+      </div>
+
+      <div className="app-content p-4 space-y-4">
+        <Card className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Tahap</Label>
+              <Select value={filterTahapId} onValueChange={(v) => {
+                setFilterTahapId(v);
+                setShowForm(false);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tahap..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tahaps.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{t.nama_tahap}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t.tanggal_mulai} s/d {t.tanggal_selesai}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Materi</Label>
+              <Select value={filterMateriId} onValueChange={(v) => {
+                setFilterMateriId(v);
+                setShowForm(false);
+              }} disabled={!filterTahapId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih materi..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {materis.map(m => (
+                    <SelectItem key={m.id} value={m.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{m.nama_materi}</span>
+                        <Badge variant="outline" className="text-xs">SKT: {m.skt}</Badge>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Kelompok</Label>
+              <Select value={filterKelompokId} onValueChange={(v) => {
+                setFilterKelompokId(v);
+                setShowForm(false);
+              }} disabled={!filterMateriId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih kelompok..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {kelompoks.map(k => (
+                    <SelectItem key={k.id} value={k.id}>
+                      {k.nama_kelompok}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {filterTahapId && filterMateriId && filterKelompokId && !showForm && (
+            <div className="flex justify-end">
+              <Button onClick={handleShowForm}>
+                <Award className="h-4 w-4 mr-2" />
+                Tampilkan Form Input
+              </Button>
+            </div>
+          )}
+
+          {showForm && (
+            <div className="flex items-center gap-4 p-3 bg-muted rounded-lg flex-wrap">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{selectedMateri?.nama_materi}</span>
+                <Badge variant="secondary" className="text-xs">SKT: {selectedMateri?.skt}</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{selectedKelompok?.nama_kelompok}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Award className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">{selectedTahap?.nama_tahap}</span>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {showForm && filteredSiswas.length > 0 && (
+          <>
+            <Card className="p-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b">
+                  <h3 className="font-semibold">Daftar Nilai UAM</h3>
+                  <Badge variant="outline">{filteredSiswas.length} siswa</Badge>
+                </div>
+
+                <div className="grid grid-cols-12 gap-2 pb-2 border-b font-medium text-sm">
+                  <div className="col-span-1">No</div>
+                  <div className="col-span-2">No Induk</div>
+                  <div className="col-span-4">Nama Siswa</div>
+                  <div className="col-span-2">Nilai (0-100)</div>
+                  <div className="col-span-3">Keterangan</div>
+                </div>
+
+                {filteredSiswas.map((siswa, idx) => {
+                  const input = nilaiInputs[siswa.id];
+                  if (!input) return null;
+
+                  return (
+                    <div key={siswa.id} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-1 text-sm text-muted-foreground">{idx + 1}</div>
+                      <div className="col-span-2 text-sm font-mono">{siswa.no_induk}</div>
+                      <div className="col-span-4 text-sm font-medium">{siswa.nama_lengkap}</div>
+                      <div className="col-span-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={input.nilai}
+                          onChange={(e) => handleNilaiChange(siswa.id, 'nilai', Number(e.target.value))}
+                          className="text-center font-semibold"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <Input
+                          type="text"
+                          value={input.keterangan}
+                          onChange={(e) => handleNilaiChange(siswa.id, 'keterangan', e.target.value)}
+                          placeholder="Catatan..."
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <div className="flex justify-end gap-2">
+              <Button onClick={handleReset} variant="outline">
+                Batal
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                <Save className="h-4 w-4 mr-2" />
+                {saving ? 'Menyimpan...' : 'Simpan Nilai UAM'}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {showForm && filteredSiswas.length === 0 && (
+          <Card className="p-8 text-center text-muted-foreground">
+            Tidak ada siswa di kelompok ini
+          </Card>
+        )}
+
+        {!filterTahapId && (
+          <Card className="p-8 text-center text-muted-foreground">
+            <Award className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
+            <p className="font-medium mb-1">Nilai Ulangan Akhir Materi (UAM)</p>
+            <p className="text-sm">Pilih tahap, materi, dan kelompok untuk input nilai ujian</p>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
