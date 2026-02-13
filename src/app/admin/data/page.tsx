@@ -6,7 +6,7 @@ import { ChevronRight, GraduationCap, BookOpen, Users, BarChart3, Award, Calenda
 const items = [
   { icon: CalendarClock, label: 'Tahun Akademik', desc: 'Periode tahun akademik', path: '/admin/data/tahun-akademik' },
   { icon: GraduationCap, label: 'Tahap', desc: 'Tahap pembelajaran', path: '/admin/data/tahap' },
-  { icon: UserPlus, label: 'Enrollment Siswa', desc: 'Daftar siswa per tahun', path: '/admin/enrollment', highlight: true },
+  { icon: UserPlus, label: 'Enrollment Siswa', desc: 'Daftar siswa per tahun', path: '/admin/enrollment' },
   { icon: BookOpen, label: 'Materi', desc: 'Materi pelajaran & SKT', path: '/admin/data/materi' },
   { icon: Users, label: 'Kelompok', desc: 'Kelompok belajar', path: '/admin/data/kelompok' },
   { icon: Calendar, label: 'Jadwal', desc: 'Jadwal rutin mingguan', path: '/admin/data/jadwal' },
@@ -24,12 +24,12 @@ export default function DataMasterMenu() {
         {items.map((item, i) => (
           <button
             key={item.path}
-            className={`menu-item w-full text-left animate-fade-in ${item.highlight ? 'ring-2 ring-primary' : ''}`}
+            className="menu-item w-full text-left animate-fade-in"
             style={{ animationDelay: `${i * 40}ms` }}
             onClick={() => router.push(item.path)}
           >
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.highlight ? 'bg-primary text-white' : 'bg-accent text-primary'}`}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent text-primary">
                 <item.icon size={20} />
               </div>
               <div>
