@@ -42,14 +42,14 @@ export async function POST(request: NextRequest) {
         // 2. Seed Bobot
         console.log('Seeding Bobot...');
         for (const bobot of BOBOT_DATA) {
-            const docRef = await adminDb.collection('bobot').add(bobot);
+            const docRef = await adminDb.collection('master_bobot').add(bobot);
             results.bobot.push({ id: docRef.id, ...bobot });
         }
 
         // 3. Seed Kelompok
         console.log('Seeding Kelompok...');
         for (const kelompok of KELOMPOK_DATA) {
-            const docRef = await adminDb.collection('kelompok').add({
+            const docRef = await adminDb.collection('master_kelompok').add({
                 ...kelompok,
                 created_at: new Date().toISOString(),
             });
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         // 4. Seed Materi
         console.log('Seeding Materi...');
         for (const materi of MATERI_DATA) {
-            const docRef = await adminDb.collection('materi').add({
+            const docRef = await adminDb.collection('master_materi').add({
                 ...materi,
                 created_at: new Date().toISOString(),
             });
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         // 5. Seed Tahap (linked to active tahun akademik)
         console.log('Seeding Tahap...');
         for (const tahap of TAHAP_DATA) {
-            const docRef = await adminDb.collection('tahap').add({
+            const docRef = await adminDb.collection('master_tahap').add({
                 ...tahap,
                 tahun_akademik_id: activeTahunAkademik.id,
                 created_at: new Date().toISOString(),
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         // 6. Seed Lencana
         console.log('Seeding Lencana...');
         for (const lencana of LENCANA_DATA) {
-            const docRef = await adminDb.collection('lencana').add({
+            const docRef = await adminDb.collection('master_lencana').add({
                 ...lencana,
                 created_at: new Date().toISOString(),
             });
