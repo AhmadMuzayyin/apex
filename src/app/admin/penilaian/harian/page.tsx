@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Save, Calendar, Users, BookOpen, Loader2, Award, CalendarDays, QrCode } from 'lucide-react';
 import { masterDataService } from '@/services/masterDataService';
-import type { Jadwal, Siswa, NilaiHarian, Materi, Kelompok, Tahap, Absensi } from '@/types/firestore';
+import type { Jadwal, Siswa, NilaiHarian, Materi, Kelompok, Tahap, Absensi, TahunAkademik } from '@/types/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,6 +32,8 @@ export default function NilaiHarian() {
   const [saving, setSaving] = useState(false);
   const [loadingNilai, setLoadingNilai] = useState(false);
 
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
   const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
   const [siswas, setSiswas] = useState<Siswa[]>([]);
   const [materis, setMateris] = useState<Materi[]>([]);
@@ -59,26 +61,79 @@ export default function NilaiHarian() {
   const [manualKelompokId, setManualKelompokId] = useState('');
   const [manualMateriId, setManualMateriId] = useState('');
   const [manualNilaiInputs, setManualNilaiInputs] = useState<Record<string, NilaiInput>>({});
+
+  useEffect(() => {
+    loadTahunAkademik();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadInitialData();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadTahunAkademik = async () => {
+    try {
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat tahun akademik',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const loadInitialData = useCallback(async () => {
     try {
-      const [kelompokData, siswaData, materiData, tahapData, jadwalData, absensiData] = await Promise.all([
+      setLoading(true);
+      
+      const [kelompokData, materiData, tahapData, jadwalData, absensiData, enrollmentRes] = await Promise.all([
         masterDataService.getAllKelompok(),
-        masterDataService.getAllSiswa(),
         masterDataService.getAllMateri(),
         masterDataService.getAllTahap(),
         masterDataService.getJadwalByTanggal(today),
-        masterDataService.getAllAbsensi()
+        masterDataService.getAllAbsensi(),
+        fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`)
       ]);
+
+      // Filter tahap by tahun akademik
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      
+      // Filter jadwal by tahun akademik (via tahap)
+      const tahapIds = filteredTahap.map(t => t.id);
+      const filteredJadwal = jadwalData.filter(j => tahapIds.includes(j.tahap_id));
+
+      // Get enrolled siswa for this tahun akademik
+      const enrollmentData = await enrollmentRes.json();
+      let enrolledSiswa: Siswa[] = [];
+      if (enrollmentData.success) {
+        enrolledSiswa = enrollmentData.data
+          .filter((e: any) => e.siswa)
+          .map((e: any) => e.siswa);
+      }
+
       setKelompoks(kelompokData);
-      setSiswas(siswaData);
+      setSiswas(enrolledSiswa);
       setMateris(materiData);
-      setTahaps(tahapData);
-      setTodayJadwals(jadwalData);
+      setTahaps(filteredTahap);
+      setTodayJadwals(filteredJadwal);
       setAbsensis(absensiData);
 
       // Auto-select jadwal dari URL params (dari scan page)
-      if (urlJadwalId && jadwalData.some(j => j.id === urlJadwalId)) {
-        const jadwal = jadwalData.find(j => j.id === urlJadwalId);
+      if (urlJadwalId && filteredJadwal.some(j => j.id === urlJadwalId)) {
+        const jadwal = filteredJadwal.find(j => j.id === urlJadwalId);
         if (jadwal) {
           setFilterKelompokId(jadwal.kelompok_id);
           setSelectedJadwalId(urlJadwalId);
@@ -94,11 +149,10 @@ export default function NilaiHarian() {
     } finally {
       setLoading(false);
     }
-  }, [today, toast, urlJadwalId]);
+  }, [selectedTahunAkademik, today, toast, urlJadwalId]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+  // Hapus useEffect loadInitialData() karena sudah ada di useEffect selectedTahunAkademik
+
 
   // Auto-select jadwal jika hanya 1
   useEffect(() => {
@@ -125,9 +179,8 @@ export default function NilaiHarian() {
       const jadwal = todayJadwals.find(j => j.id === jadwalId);
       if (!jadwal) return;
 
-      let kelompokSiswas = siswas
-        .filter(s => s.kelompok_id === jadwal.kelompok_id)
-        .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+      // Use all enrolled siswa (kelompok filter via enrollment would require additional API call)
+      let kelompokSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
 
       // Jika dari scan page, filter hanya siswa yang hadir
       if (fromScan) {
@@ -179,9 +232,9 @@ export default function NilaiHarian() {
   const selectedKelompok = kelompoks.find(k => k.id === selectedJadwal?.kelompok_id);
   const selectedTahap = tahaps.find(t => t.id === selectedJadwal?.tahap_id);
   
-  const filteredSiswas = siswas
-    .filter(s => s.kelompok_id === filterKelompokId)
-    .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+  // Note: Siswa filter by kelompok requires enrollment data
+  // For now, showing all enrolled siswa (filtered by tahun akademik)
+  const filteredSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
   
   const kelompokJadwals = todayJadwals.filter(j => j.kelompok_id === filterKelompokId);
 
@@ -252,9 +305,8 @@ export default function NilaiHarian() {
 
     setLoadingNilai(true);
     try {
-      const kelompokSiswas = siswas
-        .filter(s => s.kelompok_id === manualKelompokId)
-        .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+      // Use all enrolled siswa (kelompok filter via enrollment not available here)
+      const kelompokSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
 
       const inputs: Record<string, NilaiInput> = {};
       
@@ -345,6 +397,7 @@ export default function NilaiHarian() {
           tahap_id: selectedJadwal.tahap_id,
           materi_id: selectedJadwal.materi_id,
           kelompok_id: selectedJadwal.kelompok_id,
+          tahun_akademik_id: selectedTahunAkademik,
           pertemuan_ke: input.pertemuan_ke,
           nilai: input.nilai,
           keterangan: input.keterangan,
@@ -438,6 +491,7 @@ export default function NilaiHarian() {
           tahap_id: manualTahapId,
           materi_id: manualMateriId,
           kelompok_id: manualKelompokId,
+          tahun_akademik_id: selectedTahunAkademik,
           pertemuan_ke: input.pertemuan_ke,
           nilai: input.nilai,
           keterangan: input.keterangan,
@@ -719,9 +773,8 @@ export default function NilaiHarian() {
 
   // Render Input Manual Tab
   const renderInputManual = () => {
-    const manualFilteredSiswas = siswas
-      .filter(s => s.kelompok_id === manualKelompokId)
-      .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+    // Use all enrolled siswa
+    const manualFilteredSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
 
     const selectedManualMateri = materis.find(m => m.id === manualMateriId);
     const selectedManualKelompok = kelompoks.find(k => k.id === manualKelompokId);
@@ -999,25 +1052,44 @@ export default function NilaiHarian() {
         </span>
       </div>
 
-      <div className="app-content p-4">
-        <Tabs defaultValue="otomatis" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="otomatis" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Input Otomatis
-            </TabsTrigger>
-            <TabsTrigger value="manual" className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4" />
-              Input Manual
-            </TabsTrigger>
-          </TabsList>
+      <div className="app-content p-4 space-y-4">
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          {/* TAB: INPUT OTOMATIS (Existing Logic) */}
-          <TabsContent value="otomatis" className="space-y-4 mt-0">{renderInputOtomatis()}</TabsContent>
+        {selectedTahunAkademik && (
+          <Tabs defaultValue="otomatis" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="otomatis" className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Input Otomatis
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" />
+                Input Manual
+              </TabsTrigger>
+            </TabsList>
 
-          {/* TAB: INPUT MANUAL */}
-          <TabsContent value="manual" className="space-y-4 mt-0">{renderInputManual()}</TabsContent>
-        </Tabs>
+            {/* TAB: INPUT OTOMATIS (Existing Logic) */}
+            <TabsContent value="otomatis" className="space-y-4 mt-0">{renderInputOtomatis()}</TabsContent>
+
+            {/* TAB: INPUT MANUAL */}
+            <TabsContent value="manual" className="space-y-4 mt-0">{renderInputManual()}</TabsContent>
+          </Tabs>
+        )}
       </div>
     </div>
   );

@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { masterDataService } from '@/services/masterDataService';
-import type { Jadwal, Tahap, Materi, Kelompok, Libur } from '@/types/firestore';
+import type { Jadwal, Tahap, Materi, Kelompok, Libur, TahunAkademik } from '@/types/firestore';
 
 const HARI_INDO = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
@@ -44,6 +44,8 @@ export default function DataJadwal() {
   const [materis, setMateris] = useState<Materi[]>([]);
   const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
   const [liburs, setLiburs] = useState<Libur[]>([]);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -61,30 +63,40 @@ export default function DataJadwal() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadAllData();
+    loadInitialData();
   }, []);
 
-  const loadAllData = async () => {
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadDataByTahunAkademik();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [jadwalData, tahapData, materiData, kelompokData, liburData] = await Promise.all([
-        masterDataService.getAllJadwal(),
-        masterDataService.getAllTahap(),
+      
+      // Load tahun akademik
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+
+      // Load materi and kelompok (not scoped by tahun akademik)
+      const [materiData, kelompokData] = await Promise.all([
         masterDataService.getAllMateri(),
         masterDataService.getAllKelompok(),
-        masterDataService.getAllLibur(),
       ]);
-      setJadwals(jadwalData);
-      setTahaps(tahapData.sort((a, b) => b.urutan - a.urutan)); // Latest first
       setMateris(materiData);
       setKelompoks(kelompokData);
-      setLiburs(liburData);
-      
-      // Auto-select first active tahap
-      const activeTahap = tahapData.find(t => t.status === 'aktif') || tahapData[0];
-      if (activeTahap) {
-        setFilterTahapId(activeTahap.id);
-      }
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -93,6 +105,42 @@ export default function DataJadwal() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDataByTahunAkademik = async () => {
+    try {
+      const [jadwalData, tahapData, liburData] = await Promise.all([
+        masterDataService.getAllJadwal(),
+        masterDataService.getAllTahap(),
+        masterDataService.getAllLibur(),
+      ]);
+      
+      // Filter by tahun akademik
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      const filteredJadwal = jadwalData.filter(j => {
+        const tahap = filteredTahap.find(t => t.id === j.tahap_id);
+        return tahap !== undefined;
+      });
+      const filteredLibur = liburData.filter(l => l.tahun_akademik_id === selectedTahunAkademik);
+      
+      setJadwals(filteredJadwal);
+      setTahaps(filteredTahap.sort((a, b) => b.urutan - a.urutan)); // Latest first
+      setLiburs(filteredLibur);
+      
+      // Auto-select first active tahap
+      const activeTahap = filteredTahap.find(t => t.status === 'aktif') || filteredTahap[0];
+      if (activeTahap) {
+        setFilterTahapId(activeTahap.id);
+      } else {
+        setFilterTahapId('');
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat data',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -233,6 +281,7 @@ export default function DataJadwal() {
       setSubmitting(true);
       const payload = {
         ...formData,
+        tahun_akademik_id: selectedTahunAkademik,
         status: 'scheduled' as const,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -256,7 +305,7 @@ export default function DataJadwal() {
       }
 
       setOpenDialog(false);
-      loadAllData();
+      loadDataByTahunAkademik();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -274,7 +323,7 @@ export default function DataJadwal() {
       await masterDataService.deleteJadwal(selectedJadwal.id);
       toast({ title: 'Berhasil', description: 'Jadwal berhasil dihapus' });
       setOpenDeleteDialog(false);
-      loadAllData();
+      loadDataByTahunAkademik();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -310,8 +359,26 @@ export default function DataJadwal() {
         <span className="ml-auto text-sm opacity-80">{filteredJadwals.length} data</span>
       </div>
 
-      {/* Filter Tahap & List Jadwal */}
+      {/* Filter Tahun Akademik & Tahap */}
       <div className="app-content p-4 space-y-4">
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Filter Tahap */}
         <div className="space-y-2">
           <Label htmlFor="filter-tahap">Filter Tahap</Label>
           <Select value={filterTahapId} onValueChange={setFilterTahapId}>

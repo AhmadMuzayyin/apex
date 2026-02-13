@@ -2,8 +2,19 @@
 // MASTER DATA TYPES
 // ============================================
 
+export interface TahunAkademik {
+    id: string;
+    tahun: string; // "2026/2027"
+    tanggal_mulai: string; // ISO date
+    tanggal_selesai: string; // ISO date
+    status: 'draft' | 'aktif' | 'selesai';
+    created_at: string;
+    updated_at?: string;
+}
+
 export interface Tahap {
     id: string;
+    tahun_akademik_id: string;
     nama_tahap: string;
     urutan: number;
     tanggal_mulai: string; // ISO date string '2026-02-01'
@@ -41,6 +52,7 @@ export interface Lencana {
 
 export interface Kelompok {
     id: string;
+    kode: string; // 2 digit code for no_induk generation (e.g., "50", "51")
     nama_kelompok: string;
     created_at: string;
     updated_at?: string;
@@ -48,10 +60,20 @@ export interface Kelompok {
 
 export interface Siswa {
     id: string;
-    no_induk: string;
+    no_induk: string; // Format: YYYY[KK][NNNN] (e.g., 2026500015)
     nama_lengkap: string;
+    angkatan: number; // Year of first enrollment
+    created_at: string;
+    updated_at?: string;
+}
+
+export interface SiswaEnrollment {
+    id: string;
+    tahun_akademik_id: string;
+    siswa_id: string;
     kelompok_id: string;
-    angkatan: number;
+    status: 'aktif' | 'lulus' | 'tidak_aktif';
+    tanggal_daftar: string;
     created_at: string;
     updated_at?: string;
 }
@@ -74,6 +96,7 @@ export interface User {
 
 export interface Jadwal {
     id: string;
+    tahun_akademik_id: string;
     tanggal: string; // ISO date string '2026-02-03' (specific date, not day name)
     tahap_id: string;
     materi_id: string;
@@ -87,6 +110,7 @@ export interface Jadwal {
 
 export interface Libur {
     id: string;
+    tahun_akademik_id: string;
     tipe: 'tanggal' | 'hari'; // tanggal = specific date, hari = recurring day
     nilai: string; // ISO date string untuk tipe tanggal, day name untuk tipe hari (Senin, Selasa, dst)
     keterangan: string;
@@ -98,6 +122,7 @@ export interface Libur {
 
 export interface Absensi {
     id: string;
+    tahun_akademik_id: string;
     jadwal_id: string;
     siswa_id: string;
     tanggal: string;
@@ -114,6 +139,7 @@ export interface Absensi {
 
 export interface NilaiHarian {
     id: string;
+    tahun_akademik_id: string;
     jadwal_id: string; // required - reference to specific jadwal (date-based)
     siswa_id: string;
     tahap_id: string;
@@ -128,6 +154,7 @@ export interface NilaiHarian {
 
 export interface NilaiUlangan {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     tahap_id: string;
     materi_id: string;
@@ -140,6 +167,7 @@ export interface NilaiUlangan {
 
 export interface NilaiMateri {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     tahap_id: string;
     materi_id: string;
@@ -155,6 +183,7 @@ export interface NilaiMateri {
 
 export interface NilaiIPT {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     tahap_id: string;
     total_skt: number;
@@ -165,6 +194,7 @@ export interface NilaiIPT {
 
 export interface NilaiIPK {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     total_tahap: number;
     total_ipt: number;
@@ -179,6 +209,7 @@ export interface NilaiIPK {
 
 export interface JamTambahan {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     tahap_id: string;
     materi_id: string;
@@ -193,6 +224,7 @@ export interface JamTambahan {
 
 export interface LencanaSiswa {
     id: string;
+    tahun_akademik_id: string;
     siswa_id: string;
     lencana_id: string;
     tahap_id: string;

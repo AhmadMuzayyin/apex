@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Clock, CheckCircle, AlertCircle, Edit2, Save, Loader2 } from 'lucide-react';
 import { masterDataService } from '@/services/masterDataService';
-import type { JamTambahan, Tahap, Materi, Siswa, Kelompok } from '@/types/firestore';
+import type { JamTambahan, Tahap, Materi, Siswa, Kelompok, TahunAkademik } from '@/types/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,6 +17,8 @@ export default function JamTambahanPage() {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
   const [jamTambahanList, setJamTambahanList] = useState<JamTambahan[]>([]);
   const [tahaps, setTahaps] = useState<Tahap[]>([]);
   const [materis, setMateris] = useState<Materi[]>([]);
@@ -33,20 +35,70 @@ export default function JamTambahanPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    loadTahunAkademik();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadData();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadTahunAkademik = async () => {
+    try {
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat tahun akademik',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [jtData, tahapData, materiData, siswaData, kelompokData] = await Promise.all([
+      const [jtData, tahapData, materiData, kelompokData, enrollmentRes] = await Promise.all([
         masterDataService.getAllJamTambahan(),
         masterDataService.getAllTahap(),
         masterDataService.getAllMateri(),
-        masterDataService.getAllSiswa(),
         masterDataService.getAllKelompok(),
+        fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`)
       ]);
-      setJamTambahanList(jtData);
-      setTahaps(tahapData);
+
+      // Filter tahap by tahun akademik
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      
+      // Filter jam tambahan by tahun akademik (via tahap)
+      const tahapIds = filteredTahap.map(t => t.id);
+      const filteredJT = jtData.filter(jt => tahapIds.includes(jt.tahap_id));
+
+      // Get enrolled siswa for this tahun akademik
+      const enrollmentData = await enrollmentRes.json();
+      let enrolledSiswa: Siswa[] = [];
+      if (enrollmentData.success) {
+        enrolledSiswa = enrollmentData.data
+          .filter((e: any) => e.siswa)
+          .map((e: any) => e.siswa);
+      }
+
+      setJamTambahanList(filteredJT);
+      setTahaps(filteredTahap);
       setMateris(materiData);
-      setSiswas(siswaData);
+      setSiswas(enrolledSiswa);
       setKelompoks(kelompokData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -58,11 +110,7 @@ export default function JamTambahanPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  }, [selectedTahunAkademik, toast]);
 
   const getTahapName = (id: string) => tahaps.find(t => t.id === id)?.nama_tahap || '-';
   const getMateriName = (id: string) => materis.find(m => m.id === id)?.nama_materi || '-';
@@ -141,14 +189,33 @@ export default function JamTambahanPage() {
         <h1>Jam Tambahan</h1>
       </div>
       <div className="app-content p-4 space-y-4">
-        {jamTambahanList.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p className="text-lg">🎉 Semua siswa lulus KKM</p>
-            <p className="text-sm mt-1">Tidak ada siswa yang memerlukan jam tambahan</p>
-          </div>
-        )}
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        {pendingList.length > 0 && (
+        {selectedTahunAkademik && (
+          <>
+            {jamTambahanList.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-lg">🎉 Semua siswa lulus KKM</p>
+                <p className="text-sm mt-1">Tidak ada siswa yang memerlukan jam tambahan</p>
+              </div>
+            )}
+
+            {pendingList.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-warning">
               <AlertCircle size={16} /> Pending ({pendingList.length})
@@ -215,10 +282,9 @@ export default function JamTambahanPage() {
             ))}
           </div>
         )}
-      </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-[90vw] rounded-2xl">
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-[90vw] rounded-2xl">
           <DialogHeader><DialogTitle>Input Jam Tambahan</DialogTitle></DialogHeader>
           {selected && (
             <div className="space-y-4">
@@ -304,6 +370,9 @@ export default function JamTambahanPage() {
           )}
         </DialogContent>
       </Dialog>
+          </>
+        )}
+      </div>
     </div>
   );
 }

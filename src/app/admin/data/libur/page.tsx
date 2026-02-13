@@ -34,7 +34,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { masterDataService } from '@/services/masterDataService';
-import type { Libur, Tahap } from '@/types/firestore';
+import type { Libur, Tahap, TahunAkademik } from '@/types/firestore';
 
 const HARI_OPTIONS = [
   { value: 'Senin', label: 'Senin' },
@@ -50,6 +50,8 @@ export default function DataLibur() {
   const router = useRouter();
   const [liburs, setLiburs] = useState<Libur[]>([]);
   const [tahaps, setTahaps] = useState<Tahap[]>([]);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -65,18 +67,32 @@ export default function DataLibur() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadAllData();
+    loadInitialData();
   }, []);
 
-  const loadAllData = async () => {
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadDataByTahunAkademik();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [liburData, tahapData] = await Promise.all([
-        masterDataService.getAllLibur(),
-        masterDataService.getAllTahap(),
-      ]);
-      setLiburs(liburData);
-      setTahaps(tahapData.sort((a, b) => a.urutan - b.urutan));
+      
+      // Load tahun akademik
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -85,6 +101,28 @@ export default function DataLibur() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDataByTahunAkademik = async () => {
+    try {
+      const [liburData, tahapData] = await Promise.all([
+        masterDataService.getAllLibur(),
+        masterDataService.getAllTahap(),
+      ]);
+      
+      // Filter by tahun akademik
+      const filteredLibur = liburData.filter(l => l.tahun_akademik_id === selectedTahunAkademik);
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      
+      setLiburs(filteredLibur);
+      setTahaps(filteredTahap.sort((a, b) => a.urutan - b.urutan));
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat data',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -164,6 +202,7 @@ export default function DataLibur() {
         nilai: formData.nilai,
         keterangan: formData.keterangan,
         scope: formData.scope,
+        tahun_akademik_id: selectedTahunAkademik,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -192,7 +231,7 @@ export default function DataLibur() {
       }
 
       setOpenDialog(false);
-      loadAllData();
+      loadDataByTahunAkademik();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -214,7 +253,7 @@ export default function DataLibur() {
         description: 'Data libur berhasil dihapus',
       });
       setOpenDeleteDialog(false);
-      loadAllData();
+      loadDataByTahunAkademik();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -251,14 +290,32 @@ export default function DataLibur() {
         <span className="ml-auto text-sm opacity-80">{liburs.length} data</span>
       </div>
 
-      <div className="app-content p-4 space-y-3">
+      <div className="app-content p-4 space-y-4">
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* List Libur */}
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : liburs.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
-            <p>Belum ada data hari libur</p>
+            <p>Belum ada data hari libur untuk tahun akademik ini</p>
           </div>
         ) : (
           liburs.map((libur, i) => (

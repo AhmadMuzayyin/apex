@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { masterDataService } from '@/services/masterDataService';
 import { formatTime, formatDateIndo } from '@/lib/helpers';
 import { NilaiInputModal } from '@/components/NilaiInputModal';
-import type { Jadwal, Tahap, Materi, Kelompok, Siswa, Absensi } from '@/types/firestore';
+import type { Jadwal, Tahap, Materi, Kelompok, Siswa, Absensi, TahunAkademik } from '@/types/firestore';
 
 interface ActiveJadwal extends Jadwal {
   tahap_nama: string;
@@ -31,6 +31,8 @@ export default function AbsensiPOS() {
 
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
   const [activeJadwal, setActiveJadwal] = useState<ActiveJadwal | null>(null);
   const [siswas, setSiswas] = useState<Siswa[]>([]);
   const [absensis, setAbsensis] = useState<AbsensiRecord[]>([]);
@@ -50,8 +52,37 @@ export default function AbsensiPOS() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    loadTahunAkademik();
   }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadData();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadTahunAkademik = async () => {
+    try {
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat tahun akademik',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleBack = () => {
     // Stop camera first
@@ -67,20 +98,38 @@ export default function AbsensiPOS() {
     try {
       setLoading(true);
       
-      const [jadwals, tahaps, materis, kelompoks, allSiswas] = await Promise.all([
+      const [jadwals, tahaps, materis, kelompoks, enrollmentRes] = await Promise.all([
         masterDataService.getAllJadwal(),
         masterDataService.getAllTahap(),
         masterDataService.getAllMateri(),
         masterDataService.getAllKelompok(),
-        masterDataService.getAllSiswa(),
+        fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`)
       ]);
+
+      // Filter tahap by tahun akademik
+      const filteredTahap = tahaps.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      
+      // Filter jadwal by tahun akademik (via tahap)
+      const tahapIds = filteredTahap.map(t => t.id);
+      const filteredJadwal = jadwals.filter(j => tahapIds.includes(j.tahap_id));
+
+      // Get enrolled siswa for this tahun akademik
+      const enrollmentData = await enrollmentRes.json();
+      let allEnrollments: any[] = [];
+      let allSiswas: Siswa[] = [];
+      if (enrollmentData.success) {
+        allEnrollments = enrollmentData.data;
+        allSiswas = enrollmentData.data
+          .filter((e: any) => e.siswa)
+          .map((e: any) => e.siswa);
+      }
 
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       const tolerance = 30;
 
-      const active = jadwals.find((j) => {
+      const active = filteredJadwal.find((j) => {
         if (j.tanggal !== today) return false;
         
         const [startH, startM] = j.jam_mulai.split(':').map(Number);
@@ -113,7 +162,10 @@ export default function AbsensiPOS() {
 
       setActiveJadwal(jadwalWithDetails);
 
-      const siswaInKelompok = allSiswas.filter(s => s.kelompok_id === active.kelompok_id);
+      // Filter siswa by kelompok from enrollment
+      const kelompokEnrollments = allEnrollments.filter(e => e.kelompok_id === active.kelompok_id);
+      const siswaIds = kelompokEnrollments.map(e => e.siswa_id);
+      const siswaInKelompok = allSiswas.filter(s => siswaIds.includes(s.id));
       setSiswas(siswaInKelompok);
       setTotalSiswa(siswaInKelompok.length);
 
@@ -198,6 +250,7 @@ export default function AbsensiPOS() {
       const newAbsensi: Omit<Absensi, 'id'> = {
         jadwal_id: activeJadwal.id,
         siswa_id: siswa.id,
+        tahun_akademik_id: selectedTahunAkademik,
         tanggal: activeJadwal.tanggal,
         status: 'hadir',
         metode: 'qrcode',
@@ -250,6 +303,7 @@ export default function AbsensiPOS() {
         tahap_id: activeJadwal.tahap_id,
         materi_id: activeJadwal.materi_id,
         kelompok_id: activeJadwal.kelompok_id,
+        tahun_akademik_id: selectedTahunAkademik,
         pertemuan_ke: pertemuanKe,
         nilai: nilai,
         keterangan: keterangan,

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, BookOpen, Users, Award, Loader2 } from 'lucide-react';
 import { masterDataService } from '@/services/masterDataService';
-import type { Tahap, Materi, Kelompok, Siswa, NilaiUlangan } from '@/types/firestore';
+import type { Tahap, Materi, Kelompok, Siswa, NilaiUlangan, TahunAkademik } from '@/types/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +24,8 @@ export default function NilaiUlangan() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
   const [tahaps, setTahaps] = useState<Tahap[]>([]);
   const [materis, setMateris] = useState<Materi[]>([]);
   const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
@@ -37,21 +39,65 @@ export default function NilaiUlangan() {
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    loadInitialData();
+    loadTahunAkademik();
   }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadInitialData();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadTahunAkademik = async () => {
+    try {
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat tahun akademik',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const loadInitialData = async () => {
     try {
-      const [tahapData, materiData, kelompokData, siswaData] = await Promise.all([
+      setLoading(true);
+      
+      const [tahapData, materiData, kelompokData, enrollmentRes] = await Promise.all([
         masterDataService.getAllTahap(),
         masterDataService.getAllMateri(),
         masterDataService.getAllKelompok(),
-        masterDataService.getAllSiswa()
+        fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`)
       ]);
-      setTahaps(tahapData);
+
+      // Filter tahap by tahun akademik
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+
+      // Get enrolled siswa for this tahun akademik
+      const enrollmentData = await enrollmentRes.json();
+      let enrolledSiswa: Siswa[] = [];
+      if (enrollmentData.success) {
+        enrolledSiswa = enrollmentData.data
+          .filter((e: any) => e.siswa)
+          .map((e: any) => e.siswa);
+      }
+
+      setTahaps(filteredTahap);
       setMateris(materiData);
       setKelompoks(kelompokData);
-      setSiswas(siswaData);
+      setSiswas(enrolledSiswa);
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -81,8 +127,8 @@ export default function NilaiUlangan() {
 
   const filteredSiswas = useMemo(() => {
     if (!filterKelompokId) return [];
-    return siswas.filter(s => s.kelompok_id === filterKelompokId)
-      .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+    // Show all enrolled siswa (kelompok filter not available without enrollment data)
+    return siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
   }, [siswas, filterKelompokId]);
 
   const handleShowForm = async () => {
@@ -160,6 +206,7 @@ export default function NilaiUlangan() {
           tahap_id: filterTahapId,
           materi_id: filterMateriId,
           kelompok_id: filterKelompokId,
+          tahun_akademik_id: selectedTahunAkademik,
           nilai: input.nilai,
           keterangan: input.keterangan,
           tanggal_input: today,
@@ -241,6 +288,7 @@ export default function NilaiUlangan() {
               siswa_id: input.siswa_id,
               tahap_id: filterTahapId,
               materi_id: filterMateriId,
+              tahun_akademik_id: selectedTahunAkademik,
               nilai_awal: Math.round(ip * 100) / 100, // IP sebagai nilai_awal
               jumlah_menit: totalDurasiMenit, // Auto-set dari durasi jadwal
               status: 'pending',
@@ -306,34 +354,53 @@ export default function NilaiUlangan() {
       </div>
 
       <div className="app-content p-4 space-y-4">
-        {/* Filter Section */}
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="tahap">Tahap</Label>
-            <Select value={filterTahapId} onValueChange={(v) => {
-              setFilterTahapId(v);
-              setShowForm(false);
-            }}>
-              <SelectTrigger id="tahap" className="rounded-xl">
-                <SelectValue placeholder="Pilih tahap..." />
-              </SelectTrigger>
-              <SelectContent>
-                {tahaps.map(t => (
-                  <SelectItem key={t.id} value={t.id}>
-                    <div className="flex items-center gap-2">
-                      <Award className="h-4 w-4" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{t.nama_tahap}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {t.tanggal_mulai} s/d {t.tanggal_selesai}
-                        </span>
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedTahunAkademik && (
+          <>
+            {/* Filter Section */}
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="tahap">Tahap</Label>
+                <Select value={filterTahapId} onValueChange={(v) => {
+                  setFilterTahapId(v);
+                  setShowForm(false);
+                }}>
+                  <SelectTrigger id="tahap" className="rounded-xl">
+                    <SelectValue placeholder="Pilih tahap..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tahaps.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <div className="flex items-center gap-2">
+                          <Award className="h-4 w-4" />
+                          <div className="flex flex-col">
+                            <span className="font-medium">{t.nama_tahap}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {t.tanggal_mulai} s/d {t.tanggal_selesai}
+                            </span>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
           <div className="space-y-2">
             <Label htmlFor="materi">Materi</Label>
@@ -525,6 +592,8 @@ export default function NilaiUlangan() {
               Pilih tahap, materi, dan kelompok untuk memulai
             </p>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

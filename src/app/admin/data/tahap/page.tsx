@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -26,11 +27,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { masterDataService } from '@/services/masterDataService';
-import type { Tahap } from '@/types/firestore';
+import type { Tahap, TahunAkademik } from '@/types/firestore';
 
 export default function DataTahap() {
   const router = useRouter();
   const [tahaps, setTahaps] = useState<Tahap[]>([]);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -45,22 +48,55 @@ export default function DataTahap() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadTahaps();
+    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadTahaps();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load tahun akademik
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadTahaps = async () => {
     try {
-      setLoading(true);
       const data = await masterDataService.getAllTahap();
-      setTahaps(data);
+      // Filter by selected tahun akademik
+      const filtered = data.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      setTahaps(filtered);
     } catch (error: any) {
       toast({
         title: 'Error',
         description: error.message || 'Gagal memuat data tahap',
         variant: 'destructive',
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -130,6 +166,7 @@ export default function DataTahap() {
         urutan: parseInt(formData.urutan),
         tanggal_mulai: formData.tanggal_mulai,
         tanggal_selesai: formData.tanggal_selesai,
+        tahun_akademik_id: selectedTahunAkademik,
         status,
       };
 
@@ -171,6 +208,8 @@ export default function DataTahap() {
     }
   };
 
+  const selectedTA = tahunAkademik.find(ta => ta.id === selectedTahunAkademik);
+
   if (loading) {
     return (
       <div>
@@ -193,8 +232,36 @@ export default function DataTahap() {
         <span className="ml-auto text-sm opacity-80">{tahaps.length} data</span>
       </div>
 
-      <div className="app-content p-4 space-y-3">
-        {tahaps.length === 0 && <div className="text-center py-12 text-muted-foreground"><p>Belum ada data tahap</p></div>}
+      <div className="app-content p-4 space-y-4">
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedTA && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              {selectedTA.tanggal_mulai} s/d {selectedTA.tanggal_selesai}
+            </div>
+          )}
+        </div>
+
+        {/* List Tahap */}
+        {tahaps.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            <p>Belum ada data tahap untuk tahun akademik ini</p>
+          </div>
+        )}
+        
         {tahaps.map((tahap, i) => {
           const getStatusBadge = () => {
             const colors = {
@@ -203,7 +270,7 @@ export default function DataTahap() {
               selesai: 'bg-blue-100 text-blue-700'
             };
             return (
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${ colors[tahap.status]}`}>
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[tahap.status]}`}>
                 {tahap.status === 'draft' ? 'Belum Dimulai' : tahap.status === 'aktif' ? 'Sedang Berjalan' : 'Selesai'}
               </span>
             );
@@ -236,7 +303,13 @@ export default function DataTahap() {
         })}
       </div>
 
-      <button className="app-fab" onClick={handleAdd}><Plus size={24} /></button>
+      <button 
+        className="app-fab" 
+        onClick={handleAdd}
+        disabled={!selectedTahunAkademik}
+      >
+        <Plus size={24} />
+      </button>
 
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>
         <DialogContent className="max-w-[90vw] rounded-2xl">

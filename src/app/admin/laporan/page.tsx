@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, BookOpen, Users, Award } from 'lucide-react';
 import { masterDataService } from '@/services/masterDataService';
-import type { Tahap, Materi, Kelompok, Siswa, NilaiHarian, NilaiUlangan, JamTambahan } from '@/types/firestore';
+import type { Tahap, Materi, Kelompok, Siswa, NilaiHarian, NilaiUlangan, JamTambahan, TahunAkademik } from '@/types/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,6 +17,8 @@ export default function Laporan() {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
+  const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
   const [tahaps, setTahaps] = useState<Tahap[]>([]);
   const [materis, setMateris] = useState<Materi[]>([]);
   const [kelompoks, setKelompoks] = useState<Kelompok[]>([]);
@@ -29,25 +31,77 @@ export default function Laporan() {
   const [selKelompok, setSelKelompok] = useState('');
   const [selTahap, setSelTahap] = useState('');
 
+  useEffect(() => {
+    loadTahunAkademik();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTahunAkademik) {
+      loadData();
+    }
+  }, [selectedTahunAkademik]);
+
+  const loadTahunAkademik = async () => {
+    try {
+      const taRes = await fetch('/api/tahun-akademik');
+      const taData = await taRes.json();
+      
+      if (taData.success) {
+        setTahunAkademik(taData.data);
+        
+        // Set active tahun akademik as default
+        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (active) {
+          setSelectedTahunAkademik(active.id);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal memuat tahun akademik',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [tahapData, materiData, kelompokData, siswaData, nhData, nuData, jtData] = await Promise.all([
+      const [tahapData, materiData, kelompokData, nhData, nuData, jtData, enrollmentRes] = await Promise.all([
         masterDataService.getAllTahap(),
         masterDataService.getAllMateri(),
         masterDataService.getAllKelompok(),
-        masterDataService.getAllSiswa(),
         masterDataService.getAllNilaiHarian(),
         masterDataService.getAllNilaiUlangan(),
         masterDataService.getAllJamTambahan(),
+        fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`)
       ]);
-      setTahaps(tahapData);
+
+      // Filter tahap by tahun akademik
+      const filteredTahap = tahapData.filter(t => t.tahun_akademik_id === selectedTahunAkademik);
+      const tahapIds = filteredTahap.map(t => t.id);
+
+      // Filter nilai by tahap in selected tahun akademik
+      const filteredNH = nhData.filter(nh => tahapIds.includes(nh.tahap_id));
+      const filteredNU = nuData.filter(nu => tahapIds.includes(nu.tahap_id));
+      const filteredJT = jtData.filter(jt => tahapIds.includes(jt.tahap_id));
+
+      // Get enrolled siswa for this tahun akademik
+      const enrollmentData = await enrollmentRes.json();
+      let enrolledSiswa: Siswa[] = [];
+      if (enrollmentData.success) {
+        enrolledSiswa = enrollmentData.data
+          .filter((e: any) => e.siswa)
+          .map((e: any) => e.siswa);
+      }
+
+      setTahaps(filteredTahap);
       setMateris(materiData);
       setKelompoks(kelompokData);
-      setSiswas(siswaData);
-      setNilaiHarianAll(nhData);
-      setNilaiUlanganAll(nuData);
-      setJamTambahanAll(jtData);
+      setSiswas(enrolledSiswa);
+      setNilaiHarianAll(filteredNH);
+      setNilaiUlanganAll(filteredNU);
+      setJamTambahanAll(filteredJT);
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -58,17 +112,12 @@ export default function Laporan() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  }, [selectedTahunAkademik, toast]);
 
   // Per Siswa Report
   const renderPerSiswa = () => {
     const siswa = siswas.find(s => s.id === selSiswa);
     if (!siswa) return <p className="text-center text-muted-foreground py-8">Pilih siswa untuk melihat laporan</p>;
-    const kel = kelompoks.find(k => k.id === siswa.kelompok_id);
     const ipkResult = hitungIPK(siswa.id, tahaps, materis, nilaiHarianAll, nilaiUlanganAll, jamTambahanAll);
 
     return (
@@ -76,7 +125,7 @@ export default function Laporan() {
         <div className="app-card">
           <div className="font-bold text-lg text-foreground">{siswa.nama_lengkap}</div>
           <div className="text-sm text-muted-foreground">
-            {siswa.no_induk} • {kel?.nama_kelompok} • Angkatan {siswa.angkatan}
+            {siswa.no_induk} • Angkatan {siswa.angkatan}
           </div>
           {ipkResult && (
             <div className="mt-2 p-3 rounded-xl bg-accent">
@@ -149,10 +198,12 @@ export default function Laporan() {
     if (!selKelompok) 
       return <p className="text-center text-muted-foreground py-8">Pilih kelompok untuk melihat laporan</p>;
     
-    const students = siswas.filter(s => s.kelompok_id === selKelompok);
+    // Note: Kelompok filter currently not supported with enrollment system
+    // Students are shown per tahun akademik, not filtered by kelompok
+    const students = siswas;
     
     if (students.length === 0) {
-      return <p className="text-center text-muted-foreground py-8">Tidak ada siswa di kelompok ini</p>;
+      return <p className="text-center text-muted-foreground py-8">Tidak ada siswa terdaftar untuk tahun akademik ini</p>;
     }
 
     return (
@@ -270,12 +321,10 @@ export default function Laporan() {
   const renderIPK = () => {
     const data = siswas.map(s => {
       const ipkResult = hitungIPK(s.id, tahaps, materis, nilaiHarianAll, nilaiUlanganAll, jamTambahanAll);
-      const kel = kelompoks.find(k => k.id === s.kelompok_id);
       return { 
         ...s, 
         ipk: ipkResult?.ipk ?? 0, 
-        hasIPK: !!ipkResult, 
-        kelNama: kel?.nama_kelompok || '-' 
+        hasIPK: !!ipkResult
       };
     }).filter(s => s.hasIPK).sort((a, b) => b.ipk - a.ipk);
 
@@ -292,7 +341,7 @@ export default function Laporan() {
               </span>
               <div>
                 <div className="font-semibold text-foreground text-sm">{s.nama_lengkap}</div>
-                <div className="text-xs text-muted-foreground">{s.no_induk} • {s.kelNama}</div>
+                <div className="text-xs text-muted-foreground">{s.no_induk}</div>
               </div>
             </div>
             <div className="text-right">
@@ -329,13 +378,31 @@ export default function Laporan() {
         </button>
         <h1>Laporan</h1>
       </div>
-      <div className="app-content p-4">
-        <Tabs defaultValue="siswa" className="w-full">
-          <TabsList className="w-full rounded-xl mb-4 bg-muted">
-            <TabsTrigger value="siswa" className="flex-1 rounded-lg text-xs">Per Siswa</TabsTrigger>
-            <TabsTrigger value="kelompok" className="flex-1 rounded-lg text-xs">Per Kelompok</TabsTrigger>
-            <TabsTrigger value="ipk" className="flex-1 rounded-lg text-xs">Ranking IPK</TabsTrigger>
-          </TabsList>
+      <div className="app-content p-4 space-y-4">
+        {/* Tahun Akademik Selector */}
+        <div className="app-card">
+          <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
+          <Select value={selectedTahunAkademik} onValueChange={setSelectedTahunAkademik}>
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Pilih Tahun Akademik" />
+            </SelectTrigger>
+            <SelectContent>
+              {tahunAkademik.map(ta => (
+                <SelectItem key={ta.id} value={ta.id}>
+                  {ta.tahun} {ta.status === 'aktif' && '(Aktif)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedTahunAkademik && (
+          <Tabs defaultValue="siswa" className="w-full">
+            <TabsList className="w-full rounded-xl mb-4 bg-muted">
+              <TabsTrigger value="siswa" className="flex-1 rounded-lg text-xs">Per Siswa</TabsTrigger>
+              <TabsTrigger value="kelompok" className="flex-1 rounded-lg text-xs">Per Kelompok</TabsTrigger>
+              <TabsTrigger value="ipk" className="flex-1 rounded-lg text-xs">Ranking IPK</TabsTrigger>
+            </TabsList>
 
           <TabsContent value="siswa" className="space-y-4">
             <div className="space-y-1.5">
@@ -375,6 +442,7 @@ export default function Laporan() {
             {renderIPK()}
           </TabsContent>
         </Tabs>
+        )}
       </div>
     </div>
   );

@@ -35,7 +35,7 @@ export default function DataKelompok() {
   const [openDialog, setOpenDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedKelompok, setSelectedKelompok] = useState<Kelompok | null>(null);
-  const [formData, setFormData] = useState({ nama_kelompok: '' });
+  const [formData, setFormData] = useState({ kode: '', nama_kelompok: '' });
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -61,13 +61,13 @@ export default function DataKelompok() {
 
   const handleAdd = () => {
     setSelectedKelompok(null);
-    setFormData({ nama_kelompok: '' });
+    setFormData({ kode: '', nama_kelompok: '' });
     setOpenDialog(true);
   };
 
   const handleEdit = (kelompok: Kelompok) => {
     setSelectedKelompok(kelompok);
-    setFormData({ nama_kelompok: kelompok.nama_kelompok });
+    setFormData({ kode: kelompok.kode, nama_kelompok: kelompok.nama_kelompok });
     setOpenDialog(true);
   };
 
@@ -79,10 +79,20 @@ export default function DataKelompok() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.nama_kelompok) {
+    if (!formData.kode || !formData.nama_kelompok) {
       toast({
         title: 'Validasi Error',
-        description: 'Nama kelompok harus diisi',
+        description: 'Semua field harus diisi',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate kode is 2 digits
+    if (!/^\d{2}$/.test(formData.kode)) {
+      toast({
+        title: 'Validasi Error',
+        description: 'Kode kelompok harus 2 digit angka',
         variant: 'destructive',
       });
       return;
@@ -91,6 +101,7 @@ export default function DataKelompok() {
     setSubmitting(true);
     try {
       const data = {
+        kode: formData.kode,
         nama_kelompok: formData.nama_kelompok,
       };
 
@@ -161,6 +172,7 @@ export default function DataKelompok() {
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-semibold text-foreground">{kelompok.nama_kelompok}</h3>
+                <p className="text-sm text-muted-foreground">Kode: {kelompok.kode}</p>
               </div>
               <div className="flex gap-1">
                 <button onClick={() => handleEdit(kelompok)} className="p-2 rounded-lg text-primary hover:bg-accent transition-colors"><Pencil size={18} /></button>
@@ -180,6 +192,18 @@ export default function DataKelompok() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Kode Kelompok <span className="text-destructive">*</span></Label>
+                <Input
+                  className="rounded-xl"
+                  placeholder="50"
+                  maxLength={2}
+                  value={formData.kode}
+                  onChange={(e) => setFormData({ ...formData, kode: e.target.value })}
+                  disabled={submitting}
+                />
+                <p className="text-xs text-muted-foreground">2 digit angka untuk format no induk siswa</p>
+              </div>
               <div className="space-y-1.5">
                 <Label>Nama Kelompok <span className="text-destructive">*</span></Label>
                 <Input

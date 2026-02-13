@@ -46,8 +46,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-dvh bg-background pb-20">
-      {children}
+    <div className="min-h-dvh bg-background md:bg-slate-200 dark:md:bg-slate-950">
+      {/* Main Container with max-width */}
+      <div className="max-w-[520px] mx-auto min-h-dvh bg-background pb-20 relative md:shadow-2xl">
+        {children}
+      </div>
       
       {/* Bottom Navigation */}
       <nav className="app-bottomnav">
@@ -77,7 +80,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="cursor-pointer">
+            <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(user?.role === 'admin' ? '/admin/profil' : '/student/profil')}>
               <User className="mr-2 h-4 w-4" />
               <span>Profil</span>
             </DropdownMenuItem>

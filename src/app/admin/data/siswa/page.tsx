@@ -22,7 +22,7 @@ export default function DataSiswa() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<Siswa | null>(null);
-  const [form, setForm] = useState({ no_induk: '', nama_lengkap: '', kelompok_id: '', angkatan: 2024 });
+  const [form, setForm] = useState({ no_induk: '', nama_lengkap: '', angkatan: 2024 });
   const [submitting, setSubmitting] = useState(false);
   const [qrSiswa, setQrSiswa] = useState<Siswa | null>(null);
   const { toast } = useToast();
@@ -52,19 +52,19 @@ export default function DataSiswa() {
   };
 
   const openAdd = () => {
-    setForm({ no_induk: '', nama_lengkap: '', kelompok_id: '', angkatan: 2024 });
+    setForm({ no_induk: '', nama_lengkap: '', angkatan: 2024 });
     setEditItem(null);
     setDialogOpen(true);
   };
 
   const openEdit = (s: Siswa) => {
-    setForm({ no_induk: s.no_induk, nama_lengkap: s.nama_lengkap, kelompok_id: s.kelompok_id, angkatan: s.angkatan });
+    setForm({ no_induk: s.no_induk, nama_lengkap: s.nama_lengkap, angkatan: s.angkatan });
     setEditItem(s);
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.no_induk || !form.nama_lengkap || !form.kelompok_id) {
+    if (!form.no_induk || !form.nama_lengkap) {
       toast({
         title: 'Validasi Error',
         description: 'Semua field harus diisi',
@@ -76,11 +76,48 @@ export default function DataSiswa() {
     setSubmitting(true);
     try {
       if (editItem) {
+        // Update siswa
         await masterDataService.updateSiswa(editItem.id, form);
+        
+        // Update user account (nama)
+        const { firestoreService } = await import('@/services/firestoreService');
+        const users = await firestoreService.getAll<any>('users', {
+          filters: [{ field: 'siswa_id', operator: '==', value: editItem.id }]
+        });
+        
+        if (users.length > 0) {
+          await firestoreService.update('users', users[0].id, {
+            nama: form.nama_lengkap,
+            code: form.no_induk,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        
         toast({ title: 'Sukses', description: 'Siswa berhasil diupdate' });
       } else {
-        await masterDataService.createSiswa(form as any);
-        toast({ title: 'Sukses', description: 'Siswa berhasil ditambahkan' });
+        // Create siswa
+        const newSiswaId = await masterDataService.createSiswa(form as any);
+        
+        // Auto-create user account with default password
+        const { firestoreService } = await import('@/services/firestoreService');
+        const bcrypt = await import('bcryptjs');
+        const defaultPassword = 'password';
+        const passwordHash = await bcrypt.hash(defaultPassword, 10);
+        
+        await firestoreService.create('users', {
+          code: form.no_induk,
+          role: 'siswa',
+          password_hash: passwordHash,
+          siswa_id: newSiswaId,
+          nama: form.nama_lengkap,
+          created_at: new Date().toISOString(),
+        });
+        
+        toast({ 
+          title: 'Sukses', 
+          description: 'Siswa berhasil ditambahkan. Password default: "password"',
+          duration: 5000,
+        });
       }
       setDialogOpen(false);
       loadData();
@@ -99,8 +136,22 @@ export default function DataSiswa() {
     if (!deleteId) return;
 
     try {
-      await masterDataService.deleteSiswa(deleteId);
-      toast({ title: 'Sukses', description: 'Siswa berhasil dihapus' });
+      // Call server-side API to handle cascade delete
+      const response = await fetch(`/api/siswa/${deleteId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Gagal menghapus data');
+      }
+      
+      toast({ 
+        title: 'Sukses', 
+        description: 'Siswa dan semua data terkait berhasil dihapus',
+        duration: 5000,
+      });
       setDeleteId(null);
       loadData();
     } catch (error: any) {
@@ -142,7 +193,7 @@ export default function DataSiswa() {
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-semibold text-foreground">{s.nama_lengkap}</div>
-                <div className="text-sm text-muted-foreground">{s.no_induk} • {getKelompokName(s.kelompok_id)}</div>
+                <div className="text-sm text-muted-foreground">{s.no_induk}</div>
                 <div className="text-xs text-muted-foreground">Angkatan {s.angkatan}</div>
               </div>
               <div className="flex gap-1">
@@ -176,17 +227,9 @@ export default function DataSiswa() {
               <Input className="rounded-xl" value={form.nama_lengkap} onChange={e => setForm({ ...form, nama_lengkap: e.target.value })} disabled={submitting} />
             </div>
             <div className="space-y-1.5">
-              <Label>Kelompok <span className="text-destructive">*</span></Label>
-              <Select value={form.kelompok_id} onValueChange={v => setForm({ ...form, kelompok_id: v })} disabled={submitting}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Pilih Kelompok" /></SelectTrigger>
-                <SelectContent>
-                  {kelompok.map(k => <SelectItem key={k.id} value={k.id}>{k.nama_kelompok}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
               <Label>Angkatan <span className="text-destructive">*</span></Label>
               <Input className="rounded-xl" type="number" value={form.angkatan} onChange={e => setForm({ ...form, angkatan: Number(e.target.value) })} disabled={submitting} />
+              <p className="text-xs text-muted-foreground">Note: Gunakan halaman Enrollment untuk mendaftarkan siswa ke kelompok & tahun akademik</p>
             </div>
             <div className="flex gap-2 pt-2">
               <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDialogOpen(false)} disabled={submitting}>Batal</Button>
@@ -203,7 +246,16 @@ export default function DataSiswa() {
         <AlertDialogContent className="max-w-[85vw] rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Siswa?</AlertDialogTitle>
-            <AlertDialogDescription>Data siswa akan dihapus permanen.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Data siswa akan dihapus permanen beserta SEMUA data terkait:
+              <br />• Akun login
+              <br />• Nilai harian & ulangan
+              <br />• Absensi
+              <br />• Jam tambahan
+              <br />• Prestasi
+              <br /><br />
+              <strong>Tindakan ini tidak dapat dibatalkan!</strong>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>

@@ -1,5 +1,21 @@
 import * as bcrypt from 'bcryptjs';
 
+// Data Tahun Akademik
+export const TAHUN_AKADEMIK_DATA = [
+    {
+        tahun: '2025/2026',
+        tanggal_mulai: '2025-07-01',
+        tanggal_selesai: '2026-06-30',
+        status: 'selesai' as const,
+    },
+    {
+        tahun: '2026/2027',
+        tanggal_mulai: '2026-07-01',
+        tanggal_selesai: '2027-06-30',
+        status: 'aktif' as const,
+    },
+];
+
 // Data Bobot (Fixed - Read Only)
 export const BOBOT_DATA = [
     { predikat: 'AA', bobot: 4.0, nilai_min: 95, nilai_max: 100 },
@@ -11,20 +27,46 @@ export const BOBOT_DATA = [
     { predikat: 'E', bobot: 2.0, nilai_min: 0, nilai_max: 39 },
 ];
 
-// Data Tahap
+// Data Tahap (akan di-link ke tahun akademik aktif saat seeding)
 export const TAHAP_DATA = [
-    { nama_tahap: 'Tahap 1', urutan: 1 },
-    { nama_tahap: 'Tahap 2', urutan: 2 },
-    { nama_tahap: 'Tahap 3', urutan: 3 },
-    { nama_tahap: 'Tahap 4', urutan: 4 },
+    {
+        nama_tahap: 'Tahap 1',
+        urutan: 1,
+        tanggal_mulai: '2026-07-01',
+        tanggal_selesai: '2026-09-30',
+        status: 'selesai' as const,
+    },
+    {
+        nama_tahap: 'Tahap 2',
+        urutan: 2,
+        tanggal_mulai: '2026-10-01',
+        tanggal_selesai: '2026-12-31',
+        status: 'selesai' as const,
+    },
+    {
+        nama_tahap: 'Tahap 3',
+        urutan: 3,
+        tanggal_mulai: '2027-01-01',
+        tanggal_selesai: '2027-03-31',
+        status: 'aktif' as const,
+    },
+    {
+        nama_tahap: 'Tahap 4',
+        urutan: 4,
+        tanggal_mulai: '2027-04-01',
+        tanggal_selesai: '2027-06-30',
+        status: 'draft' as const,
+    },
 ];
 
-// Data Materi
+// Data Materi (Master Template)
 export const MATERI_DATA = [
     { nama_materi: 'Membaca', skt: 2 },
     { nama_materi: 'Menulis', skt: 2 },
     { nama_materi: 'Berhitung', skt: 2 },
     { nama_materi: 'Hafalan', skt: 2 },
+    { nama_materi: 'Tilawah', skt: 2 },
+    { nama_materi: 'Tajwid', skt: 2 },
 ];
 
 // Data Lencana
@@ -49,11 +91,12 @@ export const LENCANA_DATA = [
     },
 ];
 
-// Data Kelompok
+// Data Kelompok (dengan kode untuk no_induk)
 export const KELOMPOK_DATA = [
-    { nama_kelompok: 'Kelompok A' },
-    { nama_kelompok: 'Kelompok B' },
-    { nama_kelompok: 'Kelompok C' },
+    { kode: '50', nama_kelompok: 'Kelompok A' },
+    { kode: '51', nama_kelompok: 'Kelompok B' },
+    { kode: '52', nama_kelompok: 'Kelompok C' },
+    { kode: '53', nama_kelompok: 'Kelompok D' },
 ];
 
 // Data User Admin Default
@@ -63,31 +106,6 @@ export const ADMIN_DEFAULT = {
     nama: 'Administrator',
     password: 'admin123', // Plain text, akan di-hash
 };
-
-// Data Siswa Contoh (untuk testing)
-export const SISWA_CONTOH = [
-    {
-        no_induk: '2024001',
-        nama_lengkap: 'Ahmad Fauzi',
-        kelompok_index: 0, // Akan di-resolve ke kelompok_id
-        angkatan: 2024,
-        password: 'siswa123',
-    },
-    {
-        no_induk: '2024002',
-        nama_lengkap: 'Siti Aminah',
-        kelompok_index: 0,
-        angkatan: 2024,
-        password: 'siswa123',
-    },
-    {
-        no_induk: '2024003',
-        nama_lengkap: 'Budi Santoso',
-        kelompok_index: 1,
-        angkatan: 2024,
-        password: 'siswa123',
-    },
-];
 
 // Helper function untuk hash password
 export function hashPassword(password: string): string {
