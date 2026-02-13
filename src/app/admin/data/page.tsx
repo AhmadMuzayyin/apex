@@ -5,8 +5,8 @@ import { ChevronRight, GraduationCap, BookOpen, Users, BarChart3, Award, Calenda
 
 const items = [
   { icon: CalendarClock, label: 'Tahun Akademik', desc: 'Periode tahun akademik', path: '/admin/data/tahun-akademik' },
-  { icon: UserPlus, label: 'Enrollment Siswa', desc: 'Daftar siswa per tahun', path: '/admin/enrollment', highlight: true },
   { icon: GraduationCap, label: 'Tahap', desc: 'Tahap pembelajaran', path: '/admin/data/tahap' },
+  { icon: UserPlus, label: 'Enrollment Siswa', desc: 'Daftar siswa per tahun', path: '/admin/enrollment', highlight: true },
   { icon: BookOpen, label: 'Materi', desc: 'Materi pelajaran & SKT', path: '/admin/data/materi' },
   { icon: Users, label: 'Kelompok', desc: 'Kelompok belajar', path: '/admin/data/kelompok' },
   { icon: Calendar, label: 'Jadwal', desc: 'Jadwal rutin mingguan', path: '/admin/data/jadwal' },
