@@ -67,7 +67,7 @@ export async function DELETE(
         });
         
         // 7. Finally, delete siswa
-        const siswaRef = adminDb.collection('siswa').doc(siswaId);
+        const siswaRef = adminDb.collection('master_siswa').doc(siswaId);
         batch.delete(siswaRef);
         
         // Commit all deletes

@@ -13,7 +13,7 @@ async function generateNoInduk(tahun: number, kodeKelompok: string): Promise<str
     const prefix = `${tahun}${kodeKelompok}`;
     
     const siswaSnapshot = await adminDb
-        .collection('siswa')
+        .collection('master_siswa')
         .where('no_induk', '>=', prefix)
         .where('no_induk', '<', prefix + 'Z') // To limit range
         .get();
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get kelompok data untuk ambil kode
-        const kelompokDoc = await adminDb.collection('kelompok').doc(kelompok_id).get();
+        const kelompokDoc = await adminDb.collection('master_kelompok').doc(kelompok_id).get();
         if (!kelompokDoc.exists) {
             return NextResponse.json({
                 success: false,
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
 
         // Check if siswa with same no_induk already exists
         const existingSiswaSnapshot = await adminDb
-            .collection('siswa')
+            .collection('master_siswa')
             .where('no_induk', '==', no_induk)
             .limit(1)
             .get();
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             siswaId = existingSiswaSnapshot.docs[0].id;
         } else {
             // Create new siswa (master data)
-            const siswaRef = await adminDb.collection('siswa').add({
+            const siswaRef = await adminDb.collection('master_siswa').add({
                 no_induk,
                 nama_lengkap,
                 angkatan,
@@ -195,11 +195,11 @@ export async function GET(request: NextRequest) {
             const enrollment = { id: doc.id, ...doc.data() } as any;
             
             // Get siswa data
-            const siswaDoc = await adminDb.collection('siswa').doc(enrollment.siswa_id).get();
+            const siswaDoc = await adminDb.collection('master_siswa').doc(enrollment.siswa_id).get();
             const siswaData = siswaDoc.exists ? siswaDoc.data() : null;
             
             // Get kelompok data
-            const kelompokDoc = await adminDb.collection('kelompok').doc(enrollment.kelompok_id).get();
+            const kelompokDoc = await adminDb.collection('master_kelompok').doc(enrollment.kelompok_id).get();
             const kelompokData = kelompokDoc.exists ? kelompokDoc.data() : null;
             
             enrollments.push({
