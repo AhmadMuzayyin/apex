@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Trophy, LogIn, ArrowRight } from 'lucide-react';
+import { LogIn, ArrowRight } from 'lucide-react';
 
 interface TopSiswa {
   siswa_id: string;
@@ -73,10 +73,8 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="w-24 h-24 rounded-2xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6 p-3">
-            <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
-          </div>
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <img src="/favicon.png" alt="APEX" className="w-16 h-16 mx-auto mb-4" />
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-700 font-medium text-lg">Memuat...</p>
         </div>
       </div>
@@ -87,19 +85,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white shadow-sm">
+      <header className="border-b border-gray-200 bg-white">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => router.push('/')}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
             >
-              <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center p-2 border border-gray-200">
-                <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
-              </div>
+              <img src="/favicon.png" alt="APEX" className="w-10 h-10" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">APEX</h1>
-                <p className="text-xs text-gray-500">Academic Performance Excellence</p>
               </div>
             </button>
             <button
@@ -117,16 +112,17 @@ export default function Home() {
       <main className="container mx-auto px-4 py-8 md:py-16">
         {/* Hero Section */}
         <div className="text-center mb-12 animate-fade-in">
-          <div className="inline-block mb-4">
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-full">
-              <Trophy size={16} className="text-blue-600" />
-              <span className="text-sm text-blue-700 font-medium">
-                {tahunAkademik ? `Tahun Akademik ${tahunAkademik.tahun}` : 'Peringkat Siswa Terbaik'}
-              </span>
+          {tahunAkademik && (
+            <div className="inline-block mb-4">
+              <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-full">
+                <span className="text-sm text-blue-700 font-medium">
+                  Tahun Akademik {tahunAkademik.tahun}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            🏆 Top 3 Siswa Terbaik
+            Top 3 Siswa Terbaik
           </h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
             Selamat kepada siswa-siswa berprestasi yang telah menunjukkan dedikasi dan kerja keras luar biasa
@@ -200,7 +196,9 @@ export default function Home() {
           </div>
         ) : (
           <div className="text-center py-12 bg-white rounded-2xl max-w-2xl mx-auto shadow-md border border-gray-200">
-            <Trophy size={48} className="text-gray-300 mx-auto mb-4" />
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">📊</span>
+            </div>
             <p className="text-gray-600 text-lg font-medium">Belum ada data ranking tersedia</p>
             <p className="text-gray-500 text-sm mt-2">Data akan muncul setelah ada nilai siswa</p>
           </div>
