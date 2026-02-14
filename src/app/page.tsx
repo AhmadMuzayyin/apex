@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GraduationCap, Trophy, LogIn, ArrowRight } from 'lucide-react';
+import { Trophy, LogIn, ArrowRight } from 'lucide-react';
 
 interface TopSiswa {
   siswa_id: string;
@@ -73,11 +73,11 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="w-24 h-24 rounded-2xl bg-blue-500 flex items-center justify-center mx-auto mb-6 shadow-lg">
-            <GraduationCap size={48} className="text-white" />
+          <div className="w-24 h-24 rounded-2xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6 p-3">
+            <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
           </div>
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-700 font-medium text-lg">Memuat APEX...</p>
+          <p className="text-gray-700 font-medium text-lg">Memuat...</p>
         </div>
       </div>
     );
@@ -90,18 +90,21 @@ export default function Home() {
       <header className="border-b border-gray-200 bg-white shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500 flex items-center justify-center shadow-md">
-                <GraduationCap size={24} className="text-white" />
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center p-2 border border-gray-200">
+                <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">APEX</h1>
                 <p className="text-xs text-gray-500">Academic Performance Excellence</p>
               </div>
-            </div>
+            </button>
             <button
               onClick={() => router.push('/login')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-xl text-white transition-all shadow-md hover:shadow-lg"
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-xl text-gray-700 transition-all shadow-sm hover:shadow"
             >
               <LogIn size={18} />
               <span className="font-medium">Masuk</span>
@@ -207,7 +210,7 @@ export default function Home() {
         <div className="text-center mt-12 md:mt-16 animate-fade-in" style={{ animationDelay: '600ms' }}>
           <button
             onClick={() => router.push('/login')}
-            className="inline-flex items-center gap-3 px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
+            className="inline-flex items-center gap-3 px-8 py-4 bg-white hover:bg-gray-50 border border-gray-300 text-gray-900 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
           >
             <span>Masuk ke APEX</span>
             <ArrowRight size={20} />

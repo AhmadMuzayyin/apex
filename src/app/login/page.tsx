@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { GraduationCap, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,11 +50,11 @@ export default function LoginPage() {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="w-20 h-20 rounded-2xl bg-blue-500 flex items-center justify-center mx-auto mb-6 shadow-lg">
-            <GraduationCap size={40} className="text-white" />
+          <div className="w-20 h-20 rounded-2xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6 p-2">
+            <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
           </div>
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-700 font-medium">Memuat APEX...</p>
+          <p className="text-gray-700 font-medium">Memuat...</p>
         </div>
       </div>
     );
@@ -63,14 +63,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-slate-50">
       <div className="text-center mb-8 animate-fade-in">
-        {/* Logo Icon */}
-        <div className="w-24 h-24 rounded-2xl bg-blue-500 flex items-center justify-center mx-auto mb-6 shadow-lg">
-          <GraduationCap size={48} className="text-white" />
-        </div>
-        
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">APEX</h1>
-        <p className="text-gray-600 text-base font-medium">Academic Performance Excellence</p>
-        <p className="text-gray-500 text-sm mt-2">Masuk untuk melanjutkan</p>
+        {/* Logo - Clickable to home */}
+        <button
+          onClick={() => router.push('/')}
+          className="w-24 h-24 rounded-2xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6 p-3 hover:shadow-xl transition-all"
+        >
+          <img src="/favicon.png" alt="APEX Logo" className="w-full h-full object-contain" />
+        </button>
       </div>
 
       <form onSubmit={handleLogin} className="w-full max-w-sm app-card space-y-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
