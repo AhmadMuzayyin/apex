@@ -53,7 +53,15 @@ export async function DELETE(
         // CASCADE DELETE - Delete all related data
         const batch = adminDb.batch();
         
-        // 1. Delete user account
+        // 1. Delete all enrollments
+        const enrollmentSnapshot = await adminDb.collection('siswa_enrollment')
+            .where('siswa_id', '==', siswaId)
+            .get();
+        enrollmentSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        // 2. Delete user account
         const usersSnapshot = await adminDb.collection('users')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -61,7 +69,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 2. Delete all nilai harian
+        // 3. Delete all nilai harian
         const nilaiHarianSnapshot = await adminDb.collection('nilai_harian')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -69,7 +77,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 3. Delete all nilai ulangan
+        // 4. Delete all nilai ulangan
         const nilaiUlanganSnapshot = await adminDb.collection('nilai_ulangan')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -77,7 +85,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 4. Delete all absensi
+        // 5. Delete all absensi
         const absensiSnapshot = await adminDb.collection('absensi')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -85,7 +93,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 5. Delete all jam tambahan
+        // 6. Delete all jam tambahan
         const jamTambahanSnapshot = await adminDb.collection('jam_tambahan')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -93,7 +101,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 6. Delete all prestasi
+        // 7. Delete all prestasi
         const prestasiSnapshot = await adminDb.collection('prestasi')
             .where('siswa_id', '==', siswaId)
             .get();
@@ -101,7 +109,7 @@ export async function DELETE(
             batch.delete(doc.ref);
         });
         
-        // 7. Finally, delete siswa
+        // 8. Finally, delete siswa master data
         const siswaRef = adminDb.collection('master_siswa').doc(siswaId);
         batch.delete(siswaRef);
         

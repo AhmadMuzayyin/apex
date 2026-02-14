@@ -324,7 +324,9 @@ export default function EnrollmentPage() {
 
     const canvas = qrCanvasRef.current;
     const link = document.createElement('a');
-    link.download = `qr-${qrData.no_induk}.png`;
+    // Format: QR_NoInduk_NamaSiswa.png (replace spaces with underscore)
+    const filename = `QR_${qrData.no_induk}_${qrData.nama.replace(/\s+/g, '_')}.png`;
+    link.download = filename;
     link.href = canvas.toDataURL();
     link.click();
   };
@@ -587,15 +589,17 @@ export default function EnrollmentPage() {
                 Anda yakin ingin menghapus siswa <strong>{deleteTarget.nama}</strong>?
               </p>
               <div className="bg-red-50 p-3 rounded-xl text-sm text-red-800">
-                <strong>Peringatan:</strong> Tindakan ini akan menghapus:
+                <strong>Peringatan:</strong> Tindakan ini akan menghapus SEMUA data terkait siswa:
                 <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Data siswa</li>
+                  <li>Data master siswa</li>
+                  <li>Semua enrollment (history semua tahun akademik)</li>
                   <li>Semua nilai (harian & ulangan)</li>
                   <li>Semua absensi</li>
                   <li>Semua jam tambahan</li>
                   <li>Semua prestasi</li>
                   <li>Akun user siswa</li>
                 </ul>
+                <p className="mt-2 font-semibold">Data yang terhapus TIDAK BISA dikembalikan!</p>
               </div>
               <div className="flex gap-2">
                 <Button
