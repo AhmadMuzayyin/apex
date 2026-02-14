@@ -187,6 +187,7 @@ export async function GET(request: NextRequest) {
         const enrollmentsSnapshot = await adminDb
             .collection('siswa_enrollment')
             .where('tahun_akademik_id', '==', tahun_akademik_id)
+            .orderBy('created_at', 'desc')
             .get();
 
         const enrollments = [];

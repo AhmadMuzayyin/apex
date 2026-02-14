@@ -33,8 +33,8 @@ export class MasterDataService {
     // ============================================
     async getAllMateri() {
         return firestoreService.getAll<Materi>('master_materi', {
-            orderByField: 'nama_materi',
-            orderDirection: 'asc'
+            orderByField: 'created_at',
+            orderDirection: 'desc'
         });
     }
 
@@ -59,8 +59,8 @@ export class MasterDataService {
     // ============================================
     async getAllKelompok() {
         return firestoreService.getAll<Kelompok>('master_kelompok', {
-            orderByField: 'nama_kelompok',
-            orderDirection: 'asc'
+            orderByField: 'created_at',
+            orderDirection: 'desc'
         });
     }
 
@@ -85,8 +85,8 @@ export class MasterDataService {
     // ============================================
     async getAllSiswa() {
         return firestoreService.getAll<Siswa>('master_siswa', {
-            orderByField: 'nama_lengkap',
-            orderDirection: 'asc'
+            orderByField: 'created_at',
+            orderDirection: 'desc'
         });
     }
 
@@ -117,7 +117,7 @@ export class MasterDataService {
     // ============================================
     async getAllLencana() {
         return firestoreService.getAll<Lencana>('master_lencana', {
-            orderByField: 'nilai_min',
+            orderByField: 'created_at',
             orderDirection: 'desc'
         });
     }
@@ -179,7 +179,7 @@ export class MasterDataService {
     // ============================================
     async getAllJadwal() {
         return firestoreService.getAll<Jadwal>('master_jadwal', {
-            orderByField: 'tanggal',
+            orderByField: 'created_at',
             orderDirection: 'desc'
         });
     }
