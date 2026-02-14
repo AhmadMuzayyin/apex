@@ -1,6 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '../../_lib/firebaseAdmin';
 
+export async function PUT(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id: siswaId } = await params;
+        const body = await request.json();
+
+        if (!siswaId) {
+            return NextResponse.json({
+                success: false,
+                message: 'ID siswa tidak valid',
+            }, { status: 400 });
+        }
+
+        // Update siswa data
+        await adminDb.collection('master_siswa').doc(siswaId).update({
+            ...body,
+            updated_at: new Date().toISOString(),
+        });
+
+        return NextResponse.json({
+            success: true,
+            message: 'Data siswa berhasil diupdate',
+        });
+    } catch (error) {
+        console.error('Update siswa error:', error);
+        return NextResponse.json({
+            success: false,
+            message: 'Terjadi kesalahan saat mengupdate data',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        }, { status: 500 });
+    }
+}
+
 export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }

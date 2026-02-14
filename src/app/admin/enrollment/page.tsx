@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Loader2, UserPlus } from 'lucide-react';
+import { ArrowLeft, UserPlus, Loader2, Edit, Trash2, QrCode, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import QRCode from 'qrcode';
 import type { TahunAkademik, Kelompok } from '@/types/firestore';
 
 interface Enrollment {
@@ -34,19 +35,43 @@ interface Enrollment {
 export default function EnrollmentPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const [loading, setLoading] = useState(true);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
   const [kelompok, setKelompok] = useState<Kelompok[]>([]);
   const [selectedTahunAkademik, setSelectedTahunAkademik] = useState<string>('');
+  
+  // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
   const [form, setForm] = useState({
     nama_lengkap: '',
     kelompok_id: '',
   });
+
+  const [editForm, setEditForm] = useState<{
+    enrollment_id: string;
+    siswa_id: string;
+    nama_lengkap: string;
+    kelompok_id: string;
+  } | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<{
+    siswa_id: string;
+    nama: string;
+  } | null>(null);
+
+  const [qrData, setQrData] = useState<{
+    no_induk: string;
+    nama: string;
+    kelompok: string;
+  } | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -65,22 +90,22 @@ export default function EnrollmentPage() {
       // Load tahun akademik
       const taRes = await fetch('/api/tahun-akademik');
       const taData = await taRes.json();
-      
       if (taData.success) {
         setTahunAkademik(taData.data);
         
         // Set active tahun akademik as default
-        const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
-        if (active) {
-          setSelectedTahunAkademik(active.id);
+        const activeTa = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+        if (activeTa) {
+          setSelectedTahunAkademik(activeTa.id);
         }
       }
 
       // Load kelompok
-      const { masterDataService } = await import('@/services/masterDataService');
-      const kelompokData = await masterDataService.getAllKelompok();
-      setKelompok(kelompokData);
-      
+      const kelRes = await fetch('/api/kelompok');
+      const kelData = await kelRes.json();
+      if (kelData.success) {
+        setKelompok(kelData.data);
+      }
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -98,14 +123,20 @@ export default function EnrollmentPage() {
       const data = await res.json();
       
       if (data.success) {
-        setEnrollments(data.data);
+        console.log('Enrollments loaded:', data.data);
+        setEnrollments(data.data || []);
+      } else {
+        console.error('Failed to load enrollments:', data);
+        setEnrollments([]);
       }
     } catch (error: any) {
+      console.error('Load enrollments error:', error);
       toast({
         title: 'Error',
         description: error.message || 'Gagal memuat data enrollment',
         variant: 'destructive',
       });
+      setEnrollments([]);
     }
   };
 
@@ -155,6 +186,147 @@ export default function EnrollmentPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEdit = (enrollment: Enrollment) => {
+    if (!enrollment.siswa) return;
+    
+    setEditForm({
+      enrollment_id: enrollment.id,
+      siswa_id: enrollment.siswa_id,
+      nama_lengkap: enrollment.siswa.nama_lengkap,
+      kelompok_id: enrollment.kelompok_id,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateEnrollment = async () => {
+    if (!editForm) return;
+
+    setSubmitting(true);
+    try {
+      // Update siswa nama
+      const siswaRes = await fetch(`/api/siswa/${editForm.siswa_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nama_lengkap: editForm.nama_lengkap,
+        }),
+      });
+
+      if (!siswaRes.ok) throw new Error('Gagal update siswa');
+
+      // Update enrollment kelompok
+      const enrollRes = await fetch(`/api/enrollment/${editForm.enrollment_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kelompok_id: editForm.kelompok_id,
+        }),
+      });
+
+      if (!enrollRes.ok) throw new Error('Gagal update enrollment');
+
+      toast({
+        title: 'Sukses',
+        description: 'Data siswa berhasil diupdate',
+      });
+
+      setEditDialogOpen(false);
+      setEditForm(null);
+      loadEnrollments();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal update data',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteClick = (enrollment: Enrollment) => {
+    if (!enrollment.siswa) return;
+    
+    setDeleteTarget({
+      siswa_id: enrollment.siswa_id,
+      nama: enrollment.siswa.nama_lengkap,
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/siswa/${deleteTarget.siswa_id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message);
+      }
+
+      toast({
+        title: 'Sukses',
+        description: 'Siswa dan semua data terkait berhasil dihapus',
+      });
+
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      loadEnrollments();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal menghapus data',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGenerateQR = async (enrollment: Enrollment) => {
+    if (!enrollment.siswa) return;
+
+    setQrData({
+      no_induk: enrollment.siswa.no_induk,
+      nama: enrollment.siswa.nama_lengkap,
+      kelompok: enrollment.kelompok?.nama_kelompok || '-',
+    });
+    setQrDialogOpen(true);
+
+    // Generate QR code
+    setTimeout(async () => {
+      if (qrCanvasRef.current) {
+        try {
+          await QRCode.toCanvas(qrCanvasRef.current, enrollment.siswa!.no_induk, {
+            width: 300,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF',
+            },
+          });
+        } catch (error) {
+          console.error('QR generation error:', error);
+        }
+      }
+    }, 100);
+  };
+
+  const handleDownloadQR = () => {
+    if (!qrCanvasRef.current || !qrData) return;
+
+    const canvas = qrCanvasRef.current;
+    const link = document.createElement('a');
+    link.download = `qr-${qrData.no_induk}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
   };
 
   const selectedTA = tahunAkademik.find(ta => ta.id === selectedTahunAkademik);
@@ -209,24 +381,26 @@ export default function EnrollmentPage() {
         </div>
 
         {/* List Enrollments */}
-        {enrollments.length === 0 && (
+        {enrollments.length === 0 && selectedTahunAkademik && (
           <div className="text-center py-12 text-muted-foreground">
+            <UserPlus size={48} className="mx-auto mb-4 opacity-20" />
             <p>Belum ada siswa yang terdaftar</p>
+            <p className="text-xs mt-1">Klik tombol + untuk menambah siswa</p>
           </div>
         )}
 
         {enrollments.map((enrollment, i) => (
           <div key={enrollment.id} className="app-card animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
-            <div className="flex justify-between items-start">
-              <div>
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex-1">
                 <div className="font-semibold text-foreground">
                   {enrollment.siswa?.nama_lengkap || '-'}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {enrollment.siswa?.no_induk || '-'} • {enrollment.kelompok?.nama_kelompok || '-'}
+                  {enrollment.siswa?.no_induk || '-'}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Angkatan {enrollment.siswa?.angkatan || '-'}
+                <div className="text-xs text-muted-foreground mt-1">
+                  {enrollment.kelompok?.nama_kelompok || '-'} • Angkatan {enrollment.siswa?.angkatan || '-'}
                 </div>
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -237,11 +411,42 @@ export default function EnrollmentPage() {
                 {enrollment.status}
               </div>
             </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-3 border-t border-border">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-xl"
+                onClick={() => handleGenerateQR(enrollment)}
+              >
+                <QrCode size={16} className="mr-2" />
+                QR Code
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-xl"
+                onClick={() => handleEdit(enrollment)}
+              >
+                <Edit size={16} className="mr-2" />
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-xl text-destructive hover:bg-destructive hover:text-white"
+                onClick={() => handleDeleteClick(enrollment)}
+              >
+                <Trash2 size={16} className="mr-2" />
+                Hapus
+              </Button>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* FAB */}
+      {/* FAB - Add New */}
       <button 
         className="app-fab" 
         onClick={() => setDialogOpen(true)}
@@ -250,7 +455,7 @@ export default function EnrollmentPage() {
         <UserPlus size={24} />
       </button>
 
-      {/* Dialog */}
+      {/* Dialog - Add New Enrollment */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[90vw] rounded-2xl">
           <DialogHeader>
@@ -286,31 +491,167 @@ export default function EnrollmentPage() {
                 </SelectContent>
               </Select>
             </div>
-            {selectedTA && (
-              <div className="text-xs text-muted-foreground bg-muted p-3 rounded-lg">
-                <strong>Info:</strong> Siswa akan didaftarkan untuk tahun akademik {selectedTA.tahun}.
-                No induk akan dibuat otomatis dengan format: {selectedTA.tahun.split('/')[0]}[Kode Kelompok][Nomor Urut]
-              </div>
-            )}
-            <div className="flex gap-2 pt-2">
-              <Button 
-                variant="outline" 
-                className="flex-1 rounded-xl" 
-                onClick={() => setDialogOpen(false)} 
+            <div className="bg-blue-50 p-3 rounded-xl text-sm text-blue-800">
+              <strong>Info:</strong> No Induk akan digenerate otomatis dengan format: {selectedTA?.tahun || 'YYYY'}[Kode][Urut]
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                onClick={() => setDialogOpen(false)}
                 disabled={submitting}
               >
                 Batal
               </Button>
-              <Button 
-                className="flex-1 rounded-xl" 
-                onClick={handleEnroll} 
+              <Button
+                className="flex-1 rounded-xl"
+                onClick={handleEnroll}
                 disabled={submitting}
               >
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Daftar
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog - Edit Enrollment */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-[90vw] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Data Siswa</DialogTitle>
+          </DialogHeader>
+          {editForm && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Nama Lengkap <span className="text-destructive">*</span></Label>
+                <Input 
+                  className="rounded-xl" 
+                  value={editForm.nama_lengkap} 
+                  onChange={e => setEditForm({ ...editForm, nama_lengkap: e.target.value })} 
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Kelompok <span className="text-destructive">*</span></Label>
+                <Select 
+                  value={editForm.kelompok_id} 
+                  onValueChange={v => setEditForm({ ...editForm, kelompok_id: v })} 
+                  disabled={submitting}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kelompok.map(k => (
+                      <SelectItem key={k.id} value={k.id}>
+                        {k.nama_kelompok} (Kode: {k.kode})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-xl"
+                  onClick={() => setEditDialogOpen(false)}
+                  disabled={submitting}
+                >
+                  Batal
+                </Button>
+                <Button
+                  className="flex-1 rounded-xl"
+                  onClick={handleUpdateEnrollment}
+                  disabled={submitting}
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Simpan
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog - Delete Confirmation */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-[90vw] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Hapus Siswa</DialogTitle>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Anda yakin ingin menghapus siswa <strong>{deleteTarget.nama}</strong>?
+              </p>
+              <div className="bg-red-50 p-3 rounded-xl text-sm text-red-800">
+                <strong>Peringatan:</strong> Tindakan ini akan menghapus:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Data siswa</li>
+                  <li>Semua nilai (harian & ulangan)</li>
+                  <li>Semua absensi</li>
+                  <li>Semua jam tambahan</li>
+                  <li>Semua prestasi</li>
+                  <li>Akun user siswa</li>
+                </ul>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-xl"
+                  onClick={() => setDeleteDialogOpen(false)}
+                  disabled={submitting}
+                >
+                  Batal
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1 rounded-xl"
+                  onClick={handleDeleteConfirm}
+                  disabled={submitting}
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Hapus Permanen
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog - QR Code */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-[90vw] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>QR Code - ID Card Siswa</DialogTitle>
+          </DialogHeader>
+          {qrData && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="font-semibold text-lg">{qrData.nama}</div>
+                <div className="text-sm text-muted-foreground">{qrData.no_induk}</div>
+                <div className="text-xs text-muted-foreground">{qrData.kelompok}</div>
+              </div>
+              
+              <div className="flex justify-center bg-white p-4 rounded-xl">
+                <canvas ref={qrCanvasRef} />
+              </div>
+
+              <div className="text-xs text-center text-muted-foreground">
+                Scan QR code ini untuk absensi siswa
+              </div>
+
+              <Button
+                className="w-full rounded-xl"
+                onClick={handleDownloadQR}
+              >
+                <Download size={16} className="mr-2" />
+                Download QR Code
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
