@@ -50,17 +50,8 @@ export default function LoginPage() {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
         <div className="text-center">
-          {/* Logo Video in loading */}
-          <div className="w-24 h-24 mx-auto mb-6">
-            <video 
-              autoPlay 
-              loop 
-              muted 
-              playsInline
-              className="w-full h-full object-contain"
-            >
-              <source src="/logo.mp4" type="video/mp4" />
-            </video>
+          <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-6">
+            <GraduationCap size={40} className="text-white" />
           </div>
           <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-white/90 font-medium">Memuat APEX...</p>
@@ -72,22 +63,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
       <div className="text-center mb-8 animate-fade-in">
-        {/* Logo Video */}
-        <div className="w-32 h-32 mx-auto mb-4 relative">
-          <video 
-            autoPlay 
-            loop 
-            muted 
-            playsInline
-            className="w-full h-full object-contain"
-          >
-            <source src="/logo.mp4" type="video/mp4" />
-          </video>
+        {/* Logo Icon */}
+        <div className="w-24 h-24 rounded-3xl bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-6">
+          <GraduationCap size={48} className="text-white" />
         </div>
         
-        <h1 className="text-3xl font-bold text-white mb-2">APEX</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">APEX</h1>
         <p className="text-white/90 text-base font-medium">Academic Performance Excellence</p>
-        <p className="text-white/70 text-sm mt-1">Masuk untuk melanjutkan</p>
+        <p className="text-white/70 text-sm mt-2">Masuk untuk melanjutkan</p>
       </div>
 
       <form onSubmit={handleLogin} className="w-full max-w-sm app-card space-y-4 animate-fade-in" style={{ animationDelay: '100ms' }}>

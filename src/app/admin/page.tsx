@@ -56,6 +56,15 @@ interface Jadwal {
   tahap?: { nama_tahap: string };
 }
 
+interface TopSiswa {
+  siswa_id: string;
+  nama_lengkap: string;
+  no_induk: string;
+  kelompok_nama: string;
+  rata_rata: number;
+  overall_rank?: number;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user } = useAuth();
@@ -73,6 +82,7 @@ export default function AdminDashboard() {
   });
   const [recentEnrollments, setRecentEnrollments] = useState<RecentEnrollment[]>([]);
   const [todayJadwal, setTodayJadwal] = useState<Jadwal[]>([]);
+  const [overallTop3, setOverallTop3] = useState<TopSiswa[]>([]);
 
   useEffect(() => {
     loadInitialData();
@@ -133,6 +143,10 @@ export default function AdminDashboard() {
       const jadwalRes = await fetch(`/api/jadwal?tahun_akademik_id=${selectedTA}&tanggal=${today}`);
       const jadwalData = await jadwalRes.json();
       
+      // Load ranking
+      const rankingRes = await fetch(`/api/ranking?tahun_akademik_id=${selectedTA}`);
+      const rankingData = await rankingRes.json();
+      
       if (enrollData.success && kelompokData.success) {
         const enrollments = enrollData.data || [];
         const kelompoks = kelompokData.data || [];
@@ -161,6 +175,11 @@ export default function AdminDashboard() {
         // Today's schedule
         if (jadwalData.success) {
           setTodayJadwal(jadwalData.data || []);
+        }
+
+        // Ranking
+        if (rankingData.success) {
+          setOverallTop3(rankingData.data.overallTop3 || []);
         }
       }
     } catch (error) {
@@ -327,6 +346,60 @@ export default function AdminDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Top 3 Overall Ranking */}
+        {overallTop3.length > 0 && (
+          <Card className="animate-fade-in" style={{ animationDelay: '400ms' }}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp size={18} className="text-amber-600" />
+                Peringkat Terbaik
+              </CardTitle>
+              <CardDescription>Top 3 siswa dari seluruh kelompok</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {overallTop3.map((siswa, index) => {
+                  const colors = [
+                    'from-amber-400 to-yellow-500',  // Gold
+                    'from-slate-300 to-slate-400',    // Silver
+                    'from-orange-400 to-amber-600'    // Bronze
+                  ];
+                  const badgeColors = [
+                    'bg-gradient-to-br from-amber-100 to-yellow-100 text-amber-700',
+                    'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700',
+                    'bg-gradient-to-br from-orange-100 to-amber-100 text-orange-700'
+                  ];
+                  const medals = ['🥇', '🥈', '🥉'];
+
+                  return (
+                    <div 
+                      key={siswa.siswa_id} 
+                      className={`relative overflow-hidden rounded-xl p-4 bg-gradient-to-br ${colors[index]} shadow-lg`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-4xl">{medals[index]}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-bold text-white text-lg">{siswa.nama_lengkap}</h3>
+                          </div>
+                          <p className="text-sm text-white/90">{siswa.no_induk}</p>
+                          <p className="text-xs text-white/80">{siswa.kelompok_nama}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className={`px-3 py-1 rounded-full text-sm font-bold ${badgeColors[index]}`}>
+                            {siswa.rata_rata.toFixed(1)}
+                          </div>
+                          <p className="text-xs text-white/80 mt-1">Rata-rata</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Enrollment by Kelompok Chart */}
         {stats.enrollmentByKelompok.length > 0 && (
