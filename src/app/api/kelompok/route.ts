@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { masterDataService } from '@/services/masterDataService';
+import { adminDb } from '../_lib/firebaseAdmin';
 
 export async function GET(request: NextRequest) {
     try {
-        const kelompok = await masterDataService.getAllKelompok();
+        const snapshot = await adminDb
+            .collection('master_kelompok')
+            .get();
+        
+        // Sort in memory by created_at desc
+        const kelompok = snapshot.docs
+            .sort((a, b) => {
+                const aTime = a.data().created_at || '';
+                const bTime = b.data().created_at || '';
+                return String(bTime).localeCompare(String(aTime));
+            })
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
         
         return NextResponse.json({
             success: true,

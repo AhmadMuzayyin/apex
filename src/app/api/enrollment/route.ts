@@ -187,12 +187,18 @@ export async function GET(request: NextRequest) {
         const enrollmentsSnapshot = await adminDb
             .collection('siswa_enrollment')
             .where('tahun_akademik_id', '==', tahun_akademik_id)
-            .orderBy('created_at', 'desc')
             .get();
+
+        // Sort in memory instead of Firestore (to avoid index requirement)
+        const docs = enrollmentsSnapshot.docs.sort((a, b) => {
+            const aTime = a.data().created_at || '';
+            const bTime = b.data().created_at || '';
+            return String(bTime).localeCompare(String(aTime)); // DESC order
+        });
 
         const enrollments = [];
         
-        for (const doc of enrollmentsSnapshot.docs) {
+        for (const doc of docs) {
             const enrollment = { id: doc.id, ...doc.data() } as any;
             
             // Get siswa data
