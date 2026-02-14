@@ -48,23 +48,46 @@ export default function LoginPage() {
   // Tampilkan loading saat checking auth state
   if (loading) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-primary">
+      <div className="min-h-dvh flex items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary-foreground border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-primary-foreground/70">Memuat...</p>
+          {/* Logo Video in loading */}
+          <div className="w-24 h-24 mx-auto mb-6">
+            <video 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              className="w-full h-full object-contain"
+            >
+              <source src="/logo.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white/90 font-medium">Memuat APEX...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-primary">
+    <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
       <div className="text-center mb-8 animate-fade-in">
-        <div className="w-20 h-20 rounded-3xl bg-primary-foreground/20 flex items-center justify-center mx-auto mb-4">
-          <GraduationCap size={40} className="text-primary-foreground" />
+        {/* Logo Video */}
+        <div className="w-32 h-32 mx-auto mb-4 relative">
+          <video 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            className="w-full h-full object-contain"
+          >
+            <source src="/logo.mp4" type="video/mp4" />
+          </video>
         </div>
-        <h1 className="text-2xl font-bold text-primary-foreground">Sistem Penilaian</h1>
-        <p className="text-primary-foreground/70 text-sm mt-1">Masuk untuk melanjutkan</p>
+        
+        <h1 className="text-3xl font-bold text-white mb-2">APEX</h1>
+        <p className="text-white/90 text-base font-medium">Academic Performance Excellence</p>
+        <p className="text-white/70 text-sm mt-1">Masuk untuk melanjutkan</p>
       </div>
 
       <form onSubmit={handleLogin} className="w-full max-w-sm app-card space-y-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
@@ -114,6 +137,16 @@ export default function LoginPage() {
           Gunakan no_induk/code dan password untuk login
         </p>
       </form>
+
+      {/* Footer Branding */}
+      <div className="mt-8 text-center animate-fade-in" style={{ animationDelay: '200ms' }}>
+        <p className="text-white/60 text-xs">
+          © 2026 APEX - Academic Performance Excellence
+        </p>
+        <p className="text-white/50 text-xs mt-1">
+          Version 1.0.0
+        </p>
+      </div>
     </div>
   );
 }
