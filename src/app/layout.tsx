@@ -63,7 +63,7 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.png" type="image/png" />
-        <meta name="theme-color" content="#3b82f6" />
+        <meta name="theme-color" content="#009485" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="APEX" />

@@ -342,7 +342,7 @@ export default function AdminDashboard() {
                   <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="count" fill="#009485" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
