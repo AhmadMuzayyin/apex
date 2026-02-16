@@ -71,12 +71,8 @@ export default function Home() {
   // Show loading while checking auth
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <img src="/favicon.png" alt="APEX" className="w-16 h-16 mx-auto mb-4" />
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-700 font-medium text-lg">Memuat...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -131,9 +127,8 @@ export default function Home() {
 
         {/* Ranking Cards */}
         {loadingData ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">Memuat data ranking...</p>
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
         ) : overallTop3.length > 0 ? (
           <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
