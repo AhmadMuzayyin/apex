@@ -84,42 +84,6 @@ npm run build
 npm start
 ```
 
-## 📁 Struktur Folder
-
-```
-haqy-uam-nextjs/
-├── src/
-│   ├── app/                    # App Router (Next.js 13+)
-│   │   ├── admin/             # Admin Dashboard
-│   │   │   ├── absensi/       # QR Scanner & Absensi
-│   │   │   ├── data/          # Data Master (Siswa, Jadwal, dll)
-│   │   │   ├── jam-tambahan/  # Remedial Management
-│   │   │   ├── laporan/       # Reports & Analytics
-│   │   │   └── penilaian/     # Nilai Harian & Ulangan
-│   │   ├── student/           # Student Portal
-│   │   ├── api/               # API Routes
-│   │   └── login/             # Authentication
-│   ├── components/            # Reusable Components
-│   │   ├── ui/                # shadcn/ui components
-│   │   ├── NilaiInputModal.tsx
-│   │   ├── QRCodeGenerator.tsx
-│   │   └── ProtectedRoute.tsx
-│   ├── contexts/              # React Contexts
-│   │   └── AuthContext.tsx    # Authentication state
-│   ├── lib/                   # Utilities
-│   │   ├── calculations.ts    # IP/IPT/IPK calculations
-│   │   ├── firebase.ts        # Firebase config
-│   │   └── helpers.ts         # Helper functions
-│   ├── services/              # Business Logic
-│   │   └── masterDataService.ts
-│   ├── types/                 # TypeScript types
-│   │   └── firestore.ts
-│   └── middleware.ts          # Auth middleware
-├── public/                    # Static files
-├── .env.local                 # Environment variables (gitignored)
-└── package.json
-```
-
 ## 🎯 Fitur Detail
 
 ### 1. **QR Code Absensi (POS-Style Workflow)**
@@ -139,22 +103,7 @@ haqy-uam-nextjs/
 - ✅ Pre-fill nilai jika sudah ada data
 - ✅ Modal title berubah: "Input" vs "Update"
 
-### 2. **Validasi Absensi pada Penilaian**
-
-**Aturan:**
-```typescript
-if (nilai > 0 && siswa.status !== 'hadir') {
-  ❌ Block input
-  ❌ Show toast error
-  ❌ Disable form field
-}
-```
-
-**Visual Indicators:**
-- Siswa hadir: Form normal (enabled)
-- Siswa tidak hadir: Form disabled + abu-abu + badge status + warning
-
-### 3. **Perhitungan Nilai (Calculation Logic)**
+### 2. **Perhitungan Nilai (Calculation Logic)**
 
 **IP (Indeks Prestasi per Materi):**
 ```typescript
@@ -182,7 +131,7 @@ if ((avgDaily + avgUlangan) / 2 < 40) {
 }
 ```
 
-### 4. **Input Nilai Dual Mode**
+### 3. **Input Nilai Dual Mode**
 
 **Tab "Input Otomatis":**
 - Auto-select jadwal hari ini
@@ -228,54 +177,6 @@ if ((avgDaily + avgUlangan) / 2 < 40) {
 - **date-fns** - Date manipulation
 - **sonner** - Toast notifications
 
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-**Absensi QR:**
-- [ ] Generate QR untuk siswa
-- [ ] Scan QR di jadwal aktif
-- [ ] Modal input nilai muncul
-- [ ] Save nilai → scanner resume
-- [ ] Camera cleanup on back
-
-**Penilaian:**
-- [ ] Input nilai untuk siswa hadir ✅
-- [ ] Block input untuk siswa tidak hadir ❌
-- [ ] Validasi range 0-100
-- [ ] Tab manual dengan tanggal lama
-
-**Laporan:**
-- [ ] Per siswa: IP per materi, IPT per tahap, IPK
-- [ ] Per kelompok: Table all students/tahaps
-- [ ] Ranking: Sort by IPK DESC
-- [ ] Jam tambahan: +JT indicator
-
-## 🐛 Known Issues & Quirks
-
-1. **Middleware Deprecation Warning**
-   - Next.js 16 recommends "proxy" over "middleware"
-   - Non-blocking, works fine
-
-2. **QRCodeCanvas Import**
-   - Must use named import: `import { QRCodeCanvas } from 'qrcode.react'`
-   - No default export available
-
-3. **Scanner Camera**
-   - Requires `facingMode: 'environment'` for back camera
-   - Must call `setScanning(false)` before navigation
-
-## 📝 Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase API Key | ✅ |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase Auth Domain | ✅ |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase Project ID | ✅ |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Storage Bucket | ✅ |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Messaging Sender ID | ✅ |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase App ID | ✅ |
-
 ## 🚀 Deployment
 
 ### Vercel (Recommended)
@@ -298,12 +199,6 @@ Add all `NEXT_PUBLIC_*` variables in Vercel dashboard → Settings → Environme
 
 MIT License - feel free to use for educational purposes
 
-## 👨‍💻 Developer
-
-**Ahmad Muzayyin**
-- GitHub: [@AhmadMuzayyin](https://github.com/AhmadMuzayyin)
-- Repository: [apex](https://github.com/AhmadMuzayyin/apex)
-
 ## 🙏 Acknowledgments
 
 - Next.js Team for the amazing framework
@@ -314,5 +209,3 @@ MIT License - feel free to use for educational purposes
 ---
 
 **Built with ❤️ using Next.js 16 + TypeScript + Firebase**
-
-Last Updated: February 11, 2026
