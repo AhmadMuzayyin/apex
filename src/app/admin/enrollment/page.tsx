@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import QRCode from 'qrcode';
+import * as XLSX from 'xlsx';
 import type { TahunAkademik, Kelompok } from '@/types/firestore';
 
 interface Enrollment {
@@ -331,6 +332,31 @@ export default function EnrollmentPage() {
     link.click();
   };
 
+  const handleExportExcel = () => {
+    if (enrollments.length === 0) {
+      toast({
+        title: 'Info',
+        description: 'Tidak ada data siswa untuk diexport',
+      });
+      return;
+    }
+
+    const rows = enrollments.map((enrollment, index) => ({
+      no: index + 1,
+      'no induk': enrollment.siswa?.no_induk || '-',
+      nama: enrollment.siswa?.nama_lengkap || '-',
+      kelompok: enrollment.kelompok?.nama_kelompok || '-',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Siswa');
+
+    const namaTahunAkademik = selectedTA?.tahun ? selectedTA.tahun.replace(/[^a-zA-Z0-9-_]/g, '_') : 'semua';
+    const fileName = `enrollment_siswa_${namaTahunAkademik}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
+
   const selectedTA = tahunAkademik.find(ta => ta.id === selectedTahunAkademik);
 
   if (loading) {
@@ -360,6 +386,18 @@ export default function EnrollmentPage() {
       </div>
 
       <div className="app-content p-4 space-y-4">
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            className="rounded-xl"
+            onClick={handleExportExcel}
+            disabled={enrollments.length === 0}
+          >
+            <Download size={16} className="mr-2" />
+            Export Excel
+          </Button>
+        </div>
+
         {/* Tahun Akademik Selector */}
         <div className="app-card">
           <Label className="text-sm font-medium mb-2 block">Tahun Akademik</Label>
