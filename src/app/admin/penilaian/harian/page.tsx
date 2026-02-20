@@ -41,6 +41,7 @@ export default function NilaiHarian() {
   const [todayJadwals, setTodayJadwals] = useState<Jadwal[]>([]);
   const [existingNilai, setExistingNilai] = useState<NilaiHarian[]>([]);
   const [absensis, setAbsensis] = useState<Absensi[]>([]);
+  const [enrollments, setEnrollments] = useState<{ siswa_id: string; kelompok_id: string }[]>([]);
 
   // State untuk Input Otomatis
   const [filterKelompokId, setFilterKelompokId] = useState('');
@@ -60,6 +61,7 @@ export default function NilaiHarian() {
   const [manualTahapId, setManualTahapId] = useState('');
   const [manualKelompokId, setManualKelompokId] = useState('');
   const [manualMateriId, setManualMateriId] = useState('');
+  const [manualJadwals, setManualJadwals] = useState<Jadwal[]>([]);
   const [manualNilaiInputs, setManualNilaiInputs] = useState<Record<string, NilaiInput>>({});
 
   useEffect(() => {
@@ -71,6 +73,44 @@ export default function NilaiHarian() {
       loadInitialData();
     }
   }, [selectedTahunAkademik]);
+
+  useEffect(() => {
+    const loadManualJadwals = async () => {
+      if (!manualTanggal || !selectedTahunAkademik) return;
+      try {
+        const jadwalData = await masterDataService.getJadwalByTanggal(manualTanggal);
+        const tahapIds = tahaps.map(t => t.id);
+        const filteredJadwal = jadwalData.filter(j => tahapIds.includes(j.tahap_id));
+        setManualJadwals(filteredJadwal);
+      } catch (error) {
+        console.error('Error loading manual jadwal:', error);
+        toast({
+          title: 'Error',
+          description: 'Gagal memuat jadwal manual',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    loadManualJadwals();
+  }, [manualTanggal, selectedTahunAkademik, tahaps, toast]);
+
+  useEffect(() => {
+    const availableIds = new Set(
+      manualJadwals
+        .filter(j => (!manualKelompokId || j.kelompok_id === manualKelompokId))
+        .filter(j => (!manualTahapId || j.tahap_id === manualTahapId))
+        .map(j => j.materi_id)
+    );
+    const optionIds = Array.from(availableIds);
+    if (optionIds.length === 1 && manualMateriId !== optionIds[0]) {
+      setManualMateriId(optionIds[0]);
+      return;
+    }
+    if (manualMateriId && !availableIds.has(manualMateriId)) {
+      setManualMateriId('');
+    }
+  }, [manualMateriId, manualJadwals, manualKelompokId, manualTahapId]);
 
   const loadTahunAkademik = async () => {
     try {
@@ -118,7 +158,9 @@ export default function NilaiHarian() {
       // Get enrolled siswa for this tahun akademik
       const enrollmentData = await enrollmentRes.json();
       let enrolledSiswa: Siswa[] = [];
+      let enrollmentRows: any[] = [];
       if (enrollmentData.success) {
+        enrollmentRows = enrollmentData.data;
         enrolledSiswa = enrollmentData.data
           .filter((e: any) => e.siswa)
           .map((e: any) => e.siswa);
@@ -126,6 +168,11 @@ export default function NilaiHarian() {
 
       setKelompoks(kelompokData);
       setSiswas(enrolledSiswa);
+      setEnrollments(
+        enrollmentRows
+          .filter((e: any) => e.siswa_id && e.kelompok_id)
+          .map((e: any) => ({ siswa_id: e.siswa_id, kelompok_id: e.kelompok_id }))
+      );
       setMateris(materiData);
       setTahaps(filteredTahap);
       setTodayJadwals(filteredJadwal);
@@ -179,8 +226,12 @@ export default function NilaiHarian() {
       const jadwal = todayJadwals.find(j => j.id === jadwalId);
       if (!jadwal) return;
 
-      // Use all enrolled siswa (kelompok filter via enrollment would require additional API call)
-      let kelompokSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+      const kelompokSiswaIds = new Set(
+        enrollments.filter(e => e.kelompok_id === jadwal.kelompok_id).map(e => e.siswa_id)
+      );
+      let kelompokSiswas = siswas
+        .filter(s => kelompokSiswaIds.has(s.id))
+        .sort((a, b) => a.no_induk.localeCompare(b.no_induk));
 
       // Jika dari scan page, filter hanya siswa yang hadir
       if (fromScan) {
@@ -219,7 +270,7 @@ export default function NilaiHarian() {
     } finally {
       setLoadingNilai(false);
     }
-  }, [todayJadwals, siswas, absensis, fromScan, toast]);
+  }, [todayJadwals, siswas, absensis, fromScan, toast, enrollments]);
 
   useEffect(() => {
     if (selectedJadwalId) {
@@ -232,9 +283,11 @@ export default function NilaiHarian() {
   const selectedKelompok = kelompoks.find(k => k.id === selectedJadwal?.kelompok_id);
   const selectedTahap = tahaps.find(t => t.id === selectedJadwal?.tahap_id);
   
-  // Note: Siswa filter by kelompok requires enrollment data
-  // For now, showing all enrolled siswa (filtered by tahun akademik)
-  const filteredSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+  const filteredSiswas = selectedJadwal
+    ? siswas
+        .filter(s => enrollments.some(e => e.kelompok_id === selectedJadwal.kelompok_id && e.siswa_id === s.id))
+        .sort((a, b) => a.no_induk.localeCompare(b.no_induk))
+    : [];
   
   const kelompokJadwals = todayJadwals.filter(j => j.kelompok_id === filterKelompokId);
 
@@ -270,11 +323,19 @@ export default function NilaiHarian() {
     }));
   };
 
+  const getAbsensiDate = (absensi: Absensi) => {
+    if (absensi.tanggal) return absensi.tanggal;
+    if (!absensi.created_at) return '';
+    const parsed = new Date(absensi.created_at);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().split('T')[0];
+  };
+
   const handleManualNilaiChange = (siswaId: string, field: 'nilai' | 'keterangan', value: string | number) => {
     // Validasi: nilai > 0 hanya jika siswa hadir di tanggal yang dipilih
     if (field === 'nilai' && typeof value === 'number' && value > 0 && manualTanggal) {
       const absensiSiswa = absensis.find(a => {
-        const absensiDate = new Date(a.created_at).toISOString().split('T')[0];
+        const absensiDate = getAbsensiDate(a);
         return a.siswa_id === siswaId && 
                absensiDate === manualTanggal &&
                a.status === 'hadir';
@@ -774,9 +835,20 @@ export default function NilaiHarian() {
   // Render Input Manual Tab
   const renderInputManual = () => {
     // Use all enrolled siswa
-    const manualFilteredSiswas = siswas.sort((a, b) => a.no_induk.localeCompare(b.no_induk));
+    const manualFilteredSiswas = manualKelompokId
+      ? siswas
+          .filter(s => enrollments.some(e => e.kelompok_id === manualKelompokId && e.siswa_id === s.id))
+          .sort((a, b) => a.no_induk.localeCompare(b.no_induk))
+      : [];
 
-    const selectedManualMateri = materis.find(m => m.id === manualMateriId);
+    const manualMateriOptions = materis.filter(m =>
+      manualJadwals.some(j =>
+        j.materi_id === m.id &&
+        (!manualKelompokId || j.kelompok_id === manualKelompokId) &&
+        (!manualTahapId || j.tahap_id === manualTahapId)
+      )
+    );
+    const selectedManualMateri = manualMateriOptions.find(m => m.id === manualMateriId);
     const selectedManualKelompok = kelompoks.find(k => k.id === manualKelompokId);
     const selectedManualTahap = tahaps.find(t => t.id === manualTahapId);
 
@@ -839,12 +911,16 @@ export default function NilaiHarian() {
 
           <div className="space-y-2">
             <Label htmlFor="manual-materi">Materi</Label>
-            <Select value={manualMateriId} onValueChange={setManualMateriId}>
+            <Select
+              value={manualMateriId}
+              onValueChange={setManualMateriId}
+              disabled={!manualKelompokId || !manualTahapId || manualMateriOptions.length === 1}
+            >
               <SelectTrigger id="manual-materi" className="rounded-xl">
                 <SelectValue placeholder="Pilih materi..." />
               </SelectTrigger>
               <SelectContent>
-                {materis.map(m => (
+                {manualMateriOptions.map(m => (
                   <SelectItem key={m.id} value={m.id}>
                     <div className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4" />
@@ -854,6 +930,21 @@ export default function NilaiHarian() {
                 ))}
               </SelectContent>
             </Select>
+            {manualMateriOptions.length === 1 && manualKelompokId && manualTahapId ? (
+              <p className="text-xs text-muted-foreground">
+                Materi otomatis terpilih sesuai tanggal
+              </p>
+            ) : null}
+            {!manualKelompokId || !manualTahapId ? (
+              <p className="text-xs text-muted-foreground">
+                Pilih kelompok dan tahap agar materi muncul sesuai tanggal
+              </p>
+            ) : null}
+            {manualKelompokId && manualTahapId && manualMateriOptions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Tidak ada materi di tanggal ini untuk kombinasi kelompok dan tahap
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -906,7 +997,7 @@ export default function NilaiHarian() {
 
                     // Check absensi status untuk tanggal yang dipilih
                     const absensiSiswa = absensis.find(a => {
-                      const absensiDate = new Date(a.created_at).toISOString().split('T')[0];
+                      const absensiDate = getAbsensiDate(a);
                       return a.siswa_id === siswa.id && 
                              absensiDate === manualTanggal;
                     });

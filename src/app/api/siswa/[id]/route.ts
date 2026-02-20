@@ -1,6 +1,117 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '../../_lib/firebaseAdmin';
 
+export async function GET(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id: siswaId } = await params;
+        const { searchParams } = new URL(request.url);
+        const tahunAkademikId = searchParams.get('tahun_akademik_id');
+
+        if (!siswaId) {
+            return NextResponse.json({
+                success: false,
+                message: 'ID siswa tidak valid',
+            }, { status: 400 });
+        }
+
+        const siswaSnap = await adminDb.collection('master_siswa').doc(siswaId).get();
+        if (!siswaSnap.exists) {
+            return NextResponse.json({
+                success: false,
+                message: 'Siswa tidak ditemukan',
+            }, { status: 404 });
+        }
+
+        let enrollmentQuery = adminDb.collection('siswa_enrollment').where('siswa_id', '==', siswaId);
+        if (tahunAkademikId) {
+            enrollmentQuery = enrollmentQuery.where('tahun_akademik_id', '==', tahunAkademikId);
+        }
+        const enrollmentSnapshot = await enrollmentQuery.get();
+        const enrollmentDocs = enrollmentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const enrollmentActive = enrollmentDocs.find((e: any) => e.status === 'aktif');
+        const enrollment = enrollmentActive || enrollmentDocs[0] || null;
+
+        let kelompok = null;
+        if (enrollment?.kelompok_id) {
+            const kelompokSnap = await adminDb.collection('master_kelompok').doc(enrollment.kelompok_id).get();
+            if (kelompokSnap.exists) {
+                kelompok = { id: kelompokSnap.id, ...kelompokSnap.data() };
+            }
+        }
+
+        let tahapQuery = adminDb.collection('master_tahap');
+        if (tahunAkademikId) {
+            tahapQuery = tahapQuery.where('tahun_akademik_id', '==', tahunAkademikId);
+        }
+
+        const [tahapSnapshot, materiSnapshot, lencanaSnapshot] = await Promise.all([
+            tahapQuery.get(),
+            adminDb.collection('master_materi').get(),
+            adminDb.collection('master_lencana').get(),
+        ]);
+
+        let jadwalSnapshot = null;
+        if (tahunAkademikId && enrollment?.kelompok_id) {
+            jadwalSnapshot = await adminDb
+                .collection('master_jadwal')
+                .where('tahun_akademik_id', '==', tahunAkademikId)
+                .where('kelompok_id', '==', enrollment.kelompok_id)
+                .get();
+        }
+
+        let nilaiHarianQuery = adminDb.collection('nilai_harian').where('siswa_id', '==', siswaId);
+        let nilaiUlanganQuery = adminDb.collection('nilai_ulangan').where('siswa_id', '==', siswaId);
+        let jamTambahanQuery = adminDb.collection('jam_tambahan').where('siswa_id', '==', siswaId);
+
+        if (tahunAkademikId) {
+            nilaiHarianQuery = nilaiHarianQuery.where('tahun_akademik_id', '==', tahunAkademikId);
+            nilaiUlanganQuery = nilaiUlanganQuery.where('tahun_akademik_id', '==', tahunAkademikId);
+            jamTambahanQuery = jamTambahanQuery.where('tahun_akademik_id', '==', tahunAkademikId);
+        }
+
+        const [nilaiHarianSnapshot, nilaiUlanganSnapshot, jamTambahanSnapshot] = await Promise.all([
+            nilaiHarianQuery.get(),
+            nilaiUlanganQuery.get(),
+            jamTambahanQuery.get(),
+        ]);
+
+        const siswa = { id: siswaSnap.id, ...siswaSnap.data() };
+        const tahaps = tahapSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const materis = materiSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const lencanas = lencanaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const nilaiHarian = nilaiHarianSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const nilaiUlangan = nilaiUlanganSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const jamTambahan = jamTambahanSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const jadwals = jadwalSnapshot ? jadwalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) : [];
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                siswa,
+                enrollment,
+                kelompok,
+                tahaps,
+                materis,
+                lencanas,
+                nilai_harian: nilaiHarian,
+                nilai_ulangan: nilaiUlangan,
+                jam_tambahan: jamTambahan,
+                jadwals,
+            }
+        });
+    } catch (error) {
+        console.error('Get siswa data error:', error);
+        return NextResponse.json({
+            success: false,
+            message: 'Terjadi kesalahan saat memuat data siswa',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        }, { status: 500 });
+    }
+}
+
 export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }

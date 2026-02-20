@@ -1,32 +1,114 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useStore, Siswa, Tahap, Materi, NilaiHarian as NH, NilaiUlangan as NU, Lencana, hitungIP, hitungIPT, hitungIPK, getBobot } from '@/lib/store';
+import { useToast } from '@/hooks/use-toast';
+import { hitungIP, hitungIPT, hitungIPK, getBobot } from '@/lib/calculations';
+import type { Siswa, Tahap, Materi, NilaiHarian, NilaiUlangan, Lencana, TahunAkademik, JamTambahan } from '@/types/firestore';
 
 export default function StudentPrestasi() {
   const { user } = useAuth();
-  const { items: siswaList } = useStore<Siswa>('siswa');
-  const { items: tahapList } = useStore<Tahap>('tahap');
-  const { items: materiList } = useStore<Materi>('materi');
-  const { items: nhAll } = useStore<NH>('nilaiHarian');
-  const { items: nuAll } = useStore<NU>('nilaiUlangan');
-  const { items: lencanaList } = useStore<Lencana>('lencana');
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [selectedTahunAkademik, setSelectedTahunAkademik] = useState('');
+  const [siswa, setSiswa] = useState<Siswa | null>(null);
+  const [tahaps, setTahaps] = useState<Tahap[]>([]);
+  const [materis, setMateris] = useState<Materi[]>([]);
+  const [nilaiHarian, setNilaiHarian] = useState<NilaiHarian[]>([]);
+  const [nilaiUlangan, setNilaiUlangan] = useState<NilaiUlangan[]>([]);
+  const [lencanas, setLencanas] = useState<Lencana[]>([]);
+  const [jamTambahan, setJamTambahan] = useState<JamTambahan[]>([]);
 
-  const siswa = siswaList.find(s => s.id === user?.siswaId);
-  if (!siswa) return <div><div className="app-topbar"><h1>Prestasi</h1></div><div className="app-content p-4"><p className="text-center text-muted-foreground py-12">Data tidak ditemukan</p></div></div>;
+  useEffect(() => {
+    const loadTahunAkademik = async () => {
+      try {
+        const taRes = await fetch('/api/tahun-akademik');
+        const taData = await taRes.json();
+        if (taData.success) {
+          const active = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
+          if (active) {
+            setSelectedTahunAkademik(active.id);
+          }
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Gagal memuat tahun akademik',
+          variant: 'destructive',
+        });
+      }
+    };
 
-  const ipkResult = hitungIPK(siswa.id, tahapList, materiList, nhAll, nuAll);
+    loadTahunAkademik();
+  }, [toast]);
 
-  // Collect badges
+  useEffect(() => {
+    const loadData = async () => {
+      if (!user?.siswaId || !selectedTahunAkademik) return;
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/siswa/${user.siswaId}?tahun_akademik_id=${selectedTahunAkademik}`);
+        const payload = await res.json();
+        if (!payload.success) {
+          throw new Error(payload.message || 'Gagal memuat data siswa');
+        }
+
+        const data = payload.data;
+        setSiswa(data.siswa || null);
+        setTahaps(data.tahaps || []);
+        setMateris(data.materis || []);
+        setNilaiHarian(data.nilai_harian || []);
+        setNilaiUlangan(data.nilai_ulangan || []);
+        setLencanas(data.lencanas || []);
+        setJamTambahan(data.jam_tambahan || []);
+      } catch (error) {
+        console.error('Error loading prestasi siswa:', error);
+        toast({
+          title: 'Error',
+          description: 'Gagal memuat prestasi siswa',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [user?.siswaId, selectedTahunAkademik, toast]);
+
+  if (loading) {
+    return (
+      <div>
+        <div className="app-topbar"><h1>Prestasi</h1></div>
+        <div className="app-content p-4 flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!siswa) {
+    return (
+      <div>
+        <div className="app-topbar"><h1>Prestasi</h1></div>
+        <div className="app-content p-4"><p className="text-center text-muted-foreground py-12">Data tidak ditemukan</p></div>
+      </div>
+    );
+  }
+
+  const ipkResult = hitungIPK(siswa.id, tahaps, materis, nilaiHarian, nilaiUlangan, jamTambahan);
+
   const badges: { lencana: Lencana; tahap: string; materi: string }[] = [];
-  tahapList.forEach(t => {
-    materiList.forEach(m => {
-      const nh = nhAll.filter(n => n.siswaId === siswa.id && n.tahapId === t.id && n.materiId === m.id);
-      const nu = nuAll.find(n => n.siswaId === siswa.id && n.tahapId === t.id && n.materiId === m.id);
-      const ip = hitungIP(nh, nu);
+  tahaps.forEach(t => {
+    materis.forEach(m => {
+      const nh = nilaiHarian.filter(n => n.siswa_id === siswa.id && n.tahap_id === t.id && n.materi_id === m.id);
+      const nu = nilaiUlangan.find(n => n.siswa_id === siswa.id && n.tahap_id === t.id && n.materi_id === m.id);
+      const jt = jamTambahan.find(j => j.siswa_id === siswa.id && j.tahap_id === t.id && j.materi_id === m.id && j.status === 'selesai' && j.nilai_tambahan !== undefined);
+      const ip = hitungIP(nh, nu, jt?.nilai_tambahan);
       if (ip) {
-        lencanaList.filter(l => ip.total >= l.syaratNilaiMin).forEach(l => {
-          badges.push({ lencana: l, tahap: t.nama, materi: m.nama });
+        lencanas.filter(l => ip.total >= l.nilai_min).forEach(l => {
+          badges.push({ lencana: l, tahap: t.nama_tahap, materi: m.nama_materi });
         });
       }
     });
@@ -41,17 +123,17 @@ export default function StudentPrestasi() {
             <p className="text-sm text-muted-foreground">IPK Keseluruhan</p>
             <p className="text-5xl font-extrabold text-primary mt-2">{ipkResult.ipk.toFixed(2)}</p>
             <p className="text-lg font-semibold text-foreground mt-1">Predikat {getBobot(ipkResult.ipk * 25).predikat}</p>
-            <p className="text-sm text-muted-foreground">{ipkResult.totalTahap} tahap selesai</p>
+            <p className="text-sm text-muted-foreground">{tahaps.length} tahap selesai</p>
           </div>
         )}
 
         <div className="space-y-2">
           <h3 className="font-semibold text-foreground">IPT per Tahap</h3>
-          {tahapList.sort((a, b) => a.urutan - b.urutan).map(t => {
-            const iptResult = hitungIPT(siswa.id, t.id, materiList, nhAll, nuAll);
+          {[...tahaps].sort((a, b) => a.urutan - b.urutan).map(t => {
+            const iptResult = hitungIPT(siswa.id, t.id, materis, nilaiHarian, nilaiUlangan, jamTambahan);
             return (
               <div key={t.id} className="app-card flex justify-between items-center">
-                <span className="font-medium text-foreground">{t.nama}</span>
+                <span className="font-medium text-foreground">{t.nama_tahap}</span>
                 <span className={`font-bold ${iptResult ? 'text-primary' : 'text-muted-foreground'}`}>{iptResult ? iptResult.ipt.toFixed(2) : '-'}</span>
               </div>
             );
@@ -63,9 +145,13 @@ export default function StudentPrestasi() {
           {badges.length === 0 && <p className="text-sm text-muted-foreground">Belum ada lencana</p>}
           {badges.map((b, i) => (
             <div key={i} className="app-card flex items-center gap-3">
-              <span className="text-2xl">{b.lencana.icon}</span>
+              {b.lencana.icon_url ? (
+                <img src={b.lencana.icon_url} alt={b.lencana.nama_lencana} className="h-8 w-8 object-contain" />
+              ) : (
+                <span className="text-2xl">🏆</span>
+              )}
               <div>
-                <div className="font-semibold text-foreground">{b.lencana.nama}</div>
+                <div className="font-semibold text-foreground">{b.lencana.nama_lencana}</div>
                 <div className="text-xs text-muted-foreground">{b.tahap} • {b.materi}</div>
               </div>
             </div>
