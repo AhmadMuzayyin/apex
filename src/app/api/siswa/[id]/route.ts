@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '../../_lib/firebaseAdmin';
 
+type EnrollmentDoc = {
+    id: string;
+    status?: string;
+    kelompok_id?: string;
+};
+
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -30,8 +36,11 @@ export async function GET(
             enrollmentQuery = enrollmentQuery.where('tahun_akademik_id', '==', tahunAkademikId);
         }
         const enrollmentSnapshot = await enrollmentQuery.get();
-        const enrollmentDocs = enrollmentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const enrollmentActive = enrollmentDocs.find((e: any) => e.status === 'aktif');
+        const enrollmentDocs: EnrollmentDoc[] = enrollmentSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...(doc.data() as Omit<EnrollmentDoc, 'id'>),
+        }));
+        const enrollmentActive = enrollmentDocs.find(e => e.status === 'aktif');
         const enrollment = enrollmentActive || enrollmentDocs[0] || null;
 
         let kelompok = null;
@@ -42,7 +51,7 @@ export async function GET(
             }
         }
 
-        let tahapQuery = adminDb.collection('master_tahap');
+        let tahapQuery: FirebaseFirestore.Query = adminDb.collection('master_tahap');
         if (tahunAkademikId) {
             tahapQuery = tahapQuery.where('tahun_akademik_id', '==', tahunAkademikId);
         }

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { 
   Users, Calendar, GraduationCap, Layers, 
   BookOpen, TrendingUp, UserPlus, ChevronRight,
-  CalendarCheck, Clock
+  CalendarCheck, Clock, Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -61,6 +61,7 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   
   const [loading, setLoading] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
   const [selectedTA, setSelectedTA] = useState<string>('');
   const [stats, setStats] = useState<DashboardStats>({
@@ -80,7 +81,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (selectedTA) {
-      loadDashboardData();
+      loadDashboardData(selectedTA);
     }
   }, [selectedTA]);
 
@@ -110,28 +111,25 @@ export default function AdminDashboard() {
     }
   };
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (tahunAkademikId: string) => {
     try {
-      // Load enrollment
-      const enrollRes = await fetch(`/api/enrollment?tahun_akademik_id=${selectedTA}`);
-      const enrollData = await enrollRes.json();
-      
-      // Load kelompok
-      const kelompokRes = await fetch('/api/kelompok');
-      const kelompokData = await kelompokRes.json();
-      
-      // Load tahap for selected year
-      const tahapRes = await fetch(`/api/tahap?tahun_akademik_id=${selectedTA}`);
-      const tahapData = await tahapRes.json();
-      
-      // Load materi
-      const materiRes = await fetch('/api/materi');
-      const materiData = await materiRes.json();
-      
-      // Load jadwal for today
+      setLoadingDashboard(true);
       const today = format(new Date(), 'yyyy-MM-dd');
-      const jadwalRes = await fetch(`/api/jadwal?tahun_akademik_id=${selectedTA}&tanggal=${today}`);
-      const jadwalData = await jadwalRes.json();
+      const [enrollRes, kelompokRes, tahapRes, materiRes, jadwalRes] = await Promise.all([
+        fetch(`/api/enrollment?tahun_akademik_id=${tahunAkademikId}`),
+        fetch('/api/kelompok'),
+        fetch(`/api/tahap?tahun_akademik_id=${tahunAkademikId}`),
+        fetch('/api/materi'),
+        fetch(`/api/jadwal?tahun_akademik_id=${tahunAkademikId}&tanggal=${today}`),
+      ]);
+
+      const [enrollData, kelompokData, tahapData, materiData, jadwalData] = await Promise.all([
+        enrollRes.json(),
+        kelompokRes.json(),
+        tahapRes.json(),
+        materiRes.json(),
+        jadwalRes.json(),
+      ]);
       
       if (enrollData.success && kelompokData.success) {
         const enrollments = enrollData.data || [];
@@ -165,6 +163,8 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Load dashboard data error:', error);
+    } finally {
+      setLoadingDashboard(false);
     }
   };
 
@@ -228,6 +228,15 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {loadingDashboard && (
+          <Card className="animate-pulse">
+            <CardContent className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={16} className="animate-spin" />
+              Memuat data dashboard...
+            </CardContent>
+          </Card>
+        )}
 
         {/* Statistics Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

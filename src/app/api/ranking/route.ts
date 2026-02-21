@@ -47,62 +47,66 @@ export async function GET(request: NextRequest) {
             kelompokMap.set(doc.id, { id: doc.id, ...doc.data() });
         });
 
-        // Calculate scores for each siswa
-        const siswaScores: SiswaScore[] = [];
-
-        for (const enrollDoc of enrollmentSnapshot.docs) {
-            const enrollment = enrollDoc.data();
-            const siswaId = enrollment.siswa_id;
-
-            // Get siswa data
-            const siswaDoc = await adminDb.collection('master_siswa').doc(siswaId).get();
-            if (!siswaDoc.exists) continue;
-            const siswaData = siswaDoc.data();
-
-            // Get all nilai harian for this siswa
-            const nilaiHarianSnapshot = await adminDb
-                .collection('nilai_harian')
-                .where('siswa_id', '==', siswaId)
-                .where('tahun_akademik_id', '==', tahun_akademik_id)
-                .get();
-
-            // Get all nilai ulangan for this siswa
-            const nilaiUlanganSnapshot = await adminDb
-                .collection('nilai_ulangan')
-                .where('siswa_id', '==', siswaId)
-                .where('tahun_akademik_id', '==', tahun_akademik_id)
-                .get();
-
-            // Calculate total
-            let totalNilai = 0;
-            let jumlahNilai = 0;
-
-            nilaiHarianSnapshot.docs.forEach(doc => {
-                const nilai = doc.data().nilai || 0;
-                totalNilai += nilai;
-                jumlahNilai++;
-            });
-
-            nilaiUlanganSnapshot.docs.forEach(doc => {
-                const nilai = doc.data().nilai || 0;
-                totalNilai += nilai;
-                jumlahNilai++;
-            });
-
-            if (jumlahNilai > 0) {
-                const kelompok = kelompokMap.get(enrollment.kelompok_id);
-                siswaScores.push({
-                    siswa_id: siswaId,
-                    nama_lengkap: siswaData?.nama_lengkap || '-',
-                    no_induk: siswaData?.no_induk || '-',
-                    kelompok_id: enrollment.kelompok_id,
-                    kelompok_nama: kelompok?.nama_kelompok || '-',
-                    total_nilai: totalNilai,
-                    jumlah_nilai: jumlahNilai,
-                    rata_rata: totalNilai / jumlahNilai,
-                });
+        const enrollmentRows = enrollmentSnapshot.docs.map(doc => doc.data());
+        const siswaKelompokMap = new Map<string, string>();
+        enrollmentRows.forEach((enrollment: any) => {
+            if (enrollment?.siswa_id && enrollment?.kelompok_id && !siswaKelompokMap.has(enrollment.siswa_id)) {
+                siswaKelompokMap.set(enrollment.siswa_id, enrollment.kelompok_id);
             }
-        }
+        });
+
+        const siswaIds = Array.from(siswaKelompokMap.keys());
+        const [siswaSnapshots, nilaiHarianSnapshot, nilaiUlanganSnapshot] = await Promise.all([
+            Promise.all(siswaIds.map(id => adminDb.collection('master_siswa').doc(id).get())),
+            adminDb.collection('nilai_harian').where('tahun_akademik_id', '==', tahun_akademik_id).get(),
+            adminDb.collection('nilai_ulangan').where('tahun_akademik_id', '==', tahun_akademik_id).get(),
+        ]);
+
+        const siswaMap = new Map(
+            siswaSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, snap.data()])
+        );
+
+        const nilaiAggMap = new Map<string, { total: number; count: number }>();
+
+        nilaiHarianSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const siswaId = data.siswa_id as string | undefined;
+            if (!siswaId || !siswaKelompokMap.has(siswaId)) return;
+            const current = nilaiAggMap.get(siswaId) || { total: 0, count: 0 };
+            current.total += Number(data.nilai || 0);
+            current.count += 1;
+            nilaiAggMap.set(siswaId, current);
+        });
+
+        nilaiUlanganSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const siswaId = data.siswa_id as string | undefined;
+            if (!siswaId || !siswaKelompokMap.has(siswaId)) return;
+            const current = nilaiAggMap.get(siswaId) || { total: 0, count: 0 };
+            current.total += Number(data.nilai || 0);
+            current.count += 1;
+            nilaiAggMap.set(siswaId, current);
+        });
+
+        const siswaScores: SiswaScore[] = [];
+        nilaiAggMap.forEach((agg, siswaId) => {
+            if (agg.count === 0) return;
+            const siswaData: any = siswaMap.get(siswaId);
+            const kelompokId = siswaKelompokMap.get(siswaId) || '';
+            const kelompok: any = kelompokMap.get(kelompokId);
+            siswaScores.push({
+                siswa_id: siswaId,
+                nama_lengkap: siswaData?.nama_lengkap || '-',
+                no_induk: siswaData?.no_induk || '-',
+                kelompok_id: kelompokId,
+                kelompok_nama: kelompok?.nama_kelompok || '-',
+                total_nilai: agg.total,
+                jumlah_nilai: agg.count,
+                rata_rata: agg.total / agg.count,
+            });
+        });
 
         // Sort by rata_rata descending
         siswaScores.sort((a, b) => b.rata_rata - a.rata_rata);

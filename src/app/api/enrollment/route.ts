@@ -196,25 +196,42 @@ export async function GET(request: NextRequest) {
             return String(bTime).localeCompare(String(aTime)); // DESC order
         });
 
-        const enrollments = [];
-        
-        for (const doc of docs) {
-            const enrollment = { id: doc.id, ...doc.data() } as any;
-            
-            // Get siswa data
-            const siswaDoc = await adminDb.collection('master_siswa').doc(enrollment.siswa_id).get();
-            const siswaData = siswaDoc.exists ? siswaDoc.data() : null;
-            
-            // Get kelompok data
-            const kelompokDoc = await adminDb.collection('master_kelompok').doc(enrollment.kelompok_id).get();
-            const kelompokData = kelompokDoc.exists ? kelompokDoc.data() : null;
-            
-            enrollments.push({
-                ...enrollment,
-                siswa: siswaData ? { id: siswaDoc.id, ...siswaData } : null,
-                kelompok: kelompokData ? { id: kelompokDoc.id, ...kelompokData } : null,
-            });
-        }
+        const enrollmentData = docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+
+        const siswaIds = Array.from(new Set(
+            enrollmentData
+                .map(e => e.siswa_id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        ));
+
+        const kelompokIds = Array.from(new Set(
+            enrollmentData
+                .map(e => e.kelompok_id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        ));
+
+        const [siswaSnapshots, kelompokSnapshots] = await Promise.all([
+            Promise.all(siswaIds.map(id => adminDb.collection('master_siswa').doc(id).get())),
+            Promise.all(kelompokIds.map(id => adminDb.collection('master_kelompok').doc(id).get())),
+        ]);
+
+        const siswaMap = new Map(
+            siswaSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, { id: snap.id, ...snap.data() }])
+        );
+
+        const kelompokMap = new Map(
+            kelompokSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, { id: snap.id, ...snap.data() }])
+        );
+
+        const enrollments = enrollmentData.map(enrollment => ({
+            ...enrollment,
+            siswa: enrollment.siswa_id ? (siswaMap.get(enrollment.siswa_id) || null) : null,
+            kelompok: enrollment.kelompok_id ? (kelompokMap.get(enrollment.kelompok_id) || null) : null,
+        }));
 
         return NextResponse.json({
             success: true,

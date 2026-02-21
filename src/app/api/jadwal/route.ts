@@ -41,20 +41,50 @@ export async function GET(request: NextRequest) {
             jadwal = jadwal.filter((j: any) => j.hari === hariName);
         }
 
-        // Load related data (materi, kelompok, tahap)
-        const enrichedJadwal = [];
-        for (const j of jadwal) {
-            const materiDoc = j.materi_id ? await adminDb.collection('master_materi').doc(j.materi_id).get() : null;
-            const kelompokDoc = j.kelompok_id ? await adminDb.collection('master_kelompok').doc(j.kelompok_id).get() : null;
-            const tahapDoc = j.tahap_id ? await adminDb.collection('master_tahap').doc(j.tahap_id).get() : null;
+        const materiIds = Array.from(new Set(
+            jadwal
+                .map((j: any) => j.materi_id)
+                .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        ));
+        const kelompokIds = Array.from(new Set(
+            jadwal
+                .map((j: any) => j.kelompok_id)
+                .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        ));
+        const tahapIds = Array.from(new Set(
+            jadwal
+                .map((j: any) => j.tahap_id)
+                .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        ));
 
-            enrichedJadwal.push({
-                ...j,
-                materi: materiDoc?.exists ? { id: materiDoc.id, ...materiDoc.data() } : null,
-                kelompok: kelompokDoc?.exists ? { id: kelompokDoc.id, ...kelompokDoc.data() } : null,
-                tahap: tahapDoc?.exists ? { id: tahapDoc.id, ...tahapDoc.data() } : null,
-            });
-        }
+        const [materiSnapshots, kelompokSnapshots, tahapSnapshots] = await Promise.all([
+            Promise.all(materiIds.map(id => adminDb.collection('master_materi').doc(id).get())),
+            Promise.all(kelompokIds.map(id => adminDb.collection('master_kelompok').doc(id).get())),
+            Promise.all(tahapIds.map(id => adminDb.collection('master_tahap').doc(id).get())),
+        ]);
+
+        const materiMap = new Map(
+            materiSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, { id: snap.id, ...snap.data() }])
+        );
+        const kelompokMap = new Map(
+            kelompokSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, { id: snap.id, ...snap.data() }])
+        );
+        const tahapMap = new Map(
+            tahapSnapshots
+                .filter(snap => snap.exists)
+                .map(snap => [snap.id, { id: snap.id, ...snap.data() }])
+        );
+
+        const enrichedJadwal = jadwal.map((j: any) => ({
+            ...j,
+            materi: j.materi_id ? (materiMap.get(j.materi_id) || null) : null,
+            kelompok: j.kelompok_id ? (kelompokMap.get(j.kelompok_id) || null) : null,
+            tahap: j.tahap_id ? (tahapMap.get(j.tahap_id) || null) : null,
+        }));
 
         // Sort by jam_mulai
         enrichedJadwal.sort((a, b) => {

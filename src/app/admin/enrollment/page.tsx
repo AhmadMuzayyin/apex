@@ -39,6 +39,7 @@ export default function EnrollmentPage() {
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   
   const [loading, setLoading] = useState(true);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [tahunAkademik, setTahunAkademik] = useState<TahunAkademik[]>([]);
   const [kelompok, setKelompok] = useState<Kelompok[]>([]);
@@ -80,20 +81,25 @@ export default function EnrollmentPage() {
 
   useEffect(() => {
     if (selectedTahunAkademik) {
-      loadEnrollments();
+      loadEnrollments(selectedTahunAkademik);
     }
   }, [selectedTahunAkademik]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      
-      // Load tahun akademik
-      const taRes = await fetch('/api/tahun-akademik');
+
+      const [taRes, kelRes] = await Promise.all([
+        fetch('/api/tahun-akademik'),
+        fetch('/api/kelompok'),
+      ]);
+
       const taData = await taRes.json();
+      const kelData = await kelRes.json();
+
       if (taData.success) {
         setTahunAkademik(taData.data);
-        
+
         // Set active tahun akademik as default
         const activeTa = taData.data.find((ta: TahunAkademik) => ta.status === 'aktif');
         if (activeTa) {
@@ -101,9 +107,6 @@ export default function EnrollmentPage() {
         }
       }
 
-      // Load kelompok
-      const kelRes = await fetch('/api/kelompok');
-      const kelData = await kelRes.json();
       if (kelData.success) {
         setKelompok(kelData.data);
       }
@@ -118,26 +121,26 @@ export default function EnrollmentPage() {
     }
   };
 
-  const loadEnrollments = async () => {
+  const loadEnrollments = async (tahunAkademikId: string) => {
     try {
-      const res = await fetch(`/api/enrollment?tahun_akademik_id=${selectedTahunAkademik}`);
+      setLoadingEnrollments(true);
+      const res = await fetch(`/api/enrollment?tahun_akademik_id=${tahunAkademikId}`);
       const data = await res.json();
       
       if (data.success) {
-        console.log('Enrollments loaded:', data.data);
         setEnrollments(data.data || []);
       } else {
-        console.error('Failed to load enrollments:', data);
         setEnrollments([]);
       }
     } catch (error: any) {
-      console.error('Load enrollments error:', error);
       toast({
         title: 'Error',
         description: error.message || 'Gagal memuat data enrollment',
         variant: 'destructive',
       });
       setEnrollments([]);
+    } finally {
+      setLoadingEnrollments(false);
     }
   };
 
@@ -177,7 +180,7 @@ export default function EnrollmentPage() {
 
       setDialogOpen(false);
       setForm({ nama_lengkap: '', kelompok_id: '' });
-      loadEnrollments();
+      loadEnrollments(selectedTahunAkademik);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -235,7 +238,7 @@ export default function EnrollmentPage() {
 
       setEditDialogOpen(false);
       setEditForm(null);
-      loadEnrollments();
+      loadEnrollments(selectedTahunAkademik);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -279,7 +282,7 @@ export default function EnrollmentPage() {
 
       setDeleteDialogOpen(false);
       setDeleteTarget(null);
-      loadEnrollments();
+      loadEnrollments(selectedTahunAkademik);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -421,7 +424,26 @@ export default function EnrollmentPage() {
         </div>
 
         {/* List Enrollments */}
-        {enrollments.length === 0 && selectedTahunAkademik && (
+        {loadingEnrollments && selectedTahunAkademik && (
+          <div className="space-y-3">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="app-card animate-pulse">
+                <div className="space-y-2">
+                  <div className="h-4 bg-muted rounded w-2/3" />
+                  <div className="h-3 bg-muted rounded w-1/3" />
+                  <div className="h-3 bg-muted rounded w-1/2" />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-border">
+                  <div className="h-8 bg-muted rounded-xl" />
+                  <div className="h-8 bg-muted rounded-xl" />
+                  <div className="h-8 bg-muted rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loadingEnrollments && enrollments.length === 0 && selectedTahunAkademik && (
           <div className="text-center py-12 text-muted-foreground">
             <UserPlus size={48} className="mx-auto mb-4 opacity-20" />
             <p>Belum ada siswa yang terdaftar</p>
@@ -429,7 +451,7 @@ export default function EnrollmentPage() {
           </div>
         )}
 
-        {enrollments.map((enrollment, i) => (
+        {!loadingEnrollments && enrollments.map((enrollment, i) => (
           <div key={enrollment.id} className="app-card animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
             <div className="flex justify-between items-start mb-3">
               <div className="flex-1">

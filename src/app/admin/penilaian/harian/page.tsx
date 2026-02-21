@@ -516,7 +516,7 @@ export default function NilaiHarian() {
       if (input.nilai > 0) {
         // Cari absensi siswa di tanggal yang dipilih dengan materi yang dipilih
         const absensiSiswa = absensis.find(a => {
-          const absensiDate = new Date(a.created_at).toISOString().split('T')[0];
+          const absensiDate = getAbsensiDate(a);
           return a.siswa_id === input.siswa_id && 
                  absensiDate === manualTanggal &&
                  a.status === 'hadir';
